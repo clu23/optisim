@@ -1,49 +1,13 @@
-import { useRef, useEffect } from 'react'
+import { useRef, useEffect, useState, useCallback } from 'react'
 import type { Scene, Vec2, TraceResult } from './core/types.ts'
 import { traceRay } from './core/tracer.ts'
-import { Prism } from './core/elements/prism.ts'
-import { BeamSource } from './core/sources/beam.ts'
 import { drawScene } from './renderer/canvas-renderer.ts'
+import { PropertiesPanel } from './ui/PropertiesPanel.tsx'
+import { Toolbar } from './ui/Toolbar.tsx'
+import { PRESETS } from './ui/presets.ts'
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Scène de démonstration : prisme équilatéral (n=1.5) + faisceau blanc
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** Longueurs d'onde du « blanc » : violet → rouge (nm). */
-const WHITE = [405, 445, 480, 515, 555, 590, 630, 670, 700]
-
-function makeScene(canvasW: number, canvasH: number): Scene {
-  const cx = canvasW / 2
-  const cy = canvasH / 2
-
-  return {
-    elements: [
-      new Prism({
-        id: 'prism-1',
-        position: { x: cx + 50, y: cy },
-        // angle = π → apex vers le haut (repère canvas, y croissant vers le bas)
-        angle: Math.PI,
-        size: 140,
-        n: 1.5,
-        label: 'Prisme (n=1.5)',
-      }),
-    ],
-    sources: [
-      new BeamSource({
-        id: 'beam-1',
-        position: { x: cx - 220, y: cy },
-        angle: 0,          // faisceau vers +x
-        wavelengths: WHITE,
-        numRays: 1,
-        width: 0,
-      }),
-    ],
-    metadata: { name: 'Démo — Prisme + Faisceau blanc' },
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Traçage de toute la scène
+// Trace all rays in scene
 // ─────────────────────────────────────────────────────────────────────────────
 
 function traceAll(scene: Scene): TraceResult[] {
@@ -53,7 +17,7 @@ function traceAll(scene: Scene): TraceResult[] {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// État de drag
+// Drag state
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface Drag {
@@ -64,17 +28,28 @@ interface Drag {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// App — composant racine
+// App
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function App() {
   const canvasRef  = useRef<HTMLCanvasElement>(null)
   const sceneRef   = useRef<Scene | null>(null)
-  const selectedId = useRef<string | null>(null)
   const dragRef    = useRef<Drag | null>(null)
   const rafRef     = useRef(0)
+  const dimRef     = useRef({ w: window.innerWidth, h: window.innerHeight })
 
-  // ── Boucle de rendu principale ─────────────────────────────────────────────
+  // React state — drives UI re-renders (panel + toolbar)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [version, setVersion]       = useState(0)  // bump to refresh panel
+  const [canvasSize, setCanvasSize] = useState({ w: window.innerWidth, h: window.innerHeight })
+
+  // Keep a ref in sync so RAF / event handlers can read without stale closure
+  const selectedIdRef = useRef<string | null>(null)
+  useEffect(() => { selectedIdRef.current = selectedId }, [selectedId])
+
+  const bump = useCallback(() => setVersion(v => v + 1), [])
+
+  // ── Canvas init + RAF loop ─────────────────────────────────────────────────
   useEffect(() => {
     const canvas = canvasRef.current!
     const ctx    = canvas.getContext('2d')!
@@ -82,17 +57,19 @@ export default function App() {
     function resize() {
       canvas.width  = window.innerWidth
       canvas.height = window.innerHeight
+      dimRef.current = { w: canvas.width, h: canvas.height }
+      setCanvasSize({ w: canvas.width, h: canvas.height })
     }
     resize()
     window.addEventListener('resize', resize)
 
-    // Initialisation de la scène après connaître les dimensions du canvas
-    sceneRef.current = makeScene(canvas.width, canvas.height)
+    // Load default preset
+    sceneRef.current = PRESETS[0].make(canvas.width, canvas.height)
 
     function loop() {
       if (!sceneRef.current) return
       const results = traceAll(sceneRef.current)
-      drawScene(ctx, sceneRef.current, results, selectedId.current)
+      drawScene(ctx, sceneRef.current, results, selectedIdRef.current)
       rafRef.current = requestAnimationFrame(loop)
     }
     rafRef.current = requestAnimationFrame(loop)
@@ -103,34 +80,41 @@ export default function App() {
     }
   }, [])
 
-  // ── Molette — rotation de l'élément sélectionné ────────────────────────────
+  // ── Wheel: fine rotation (0.1°/cran, Shift → 5°/cran) ────────────────────
   useEffect(() => {
     const canvas = canvasRef.current!
-
     function onWheel(e: WheelEvent) {
-      const id = selectedId.current
+      const id = selectedIdRef.current
       if (!id || !sceneRef.current) return
       e.preventDefault()
-      // ~0.5° par cran de molette standard
-      const delta = e.deltaY * 0.005
+      const deg  = e.shiftKey ? 5 : 0.1
+      const delta = Math.sign(e.deltaY) * deg * (Math.PI / 180)
       const el  = sceneRef.current.elements.find(x => x.id === id)
-      if (el) { el.angle += delta; return }
+      if (el)  { el.angle += delta; bump(); return }
       const src = sceneRef.current.sources.find(x => x.id === id)
-      if (src) src.angle += delta
+      if (src) { src.angle += delta; bump() }
     }
-
     canvas.addEventListener('wheel', onWheel, { passive: false })
     return () => canvas.removeEventListener('wheel', onWheel)
-  }, [])
+  }, [bump])
+
+  // ── Delete key ─────────────────────────────────────────────────────────────
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return
+      if ((e.target as HTMLElement).tagName === 'INPUT') return
+      deleteSelected()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  })
 
   // ── Hit testing ────────────────────────────────────────────────────────────
-
   function hitTest(pos: Vec2): { id: string; isSource: boolean; objPos: Vec2 } | null {
     if (!sceneRef.current) return null
     const { elements, sources } = sceneRef.current
-    const M = 12  // marge de clic en px
+    const M = 12
 
-    // Éléments — ordre inverse (dernier dessiné = priorité au clic)
     for (let i = elements.length - 1; i >= 0; i--) {
       const el = elements[i]
       const bb = el.getBoundingBox()
@@ -139,23 +123,22 @@ export default function App() {
         return { id: el.id, isSource: false, objPos: { ...el.position } }
       }
     }
-
-    // Sources — proximité
     for (const src of sources) {
       if (Math.hypot(pos.x - src.position.x, pos.y - src.position.y) < 32) {
         return { id: src.id, isSource: true, objPos: { ...src.position } }
       }
     }
-
     return null
   }
 
-  // ── Handlers souris ────────────────────────────────────────────────────────
-
+  // ── Mouse handlers ─────────────────────────────────────────────────────────
   function onMouseDown(e: React.MouseEvent<HTMLCanvasElement>) {
+    // Don't steal focus from panel inputs
+    if ((e.target as HTMLElement) !== canvasRef.current) return
     const pos: Vec2 = { x: e.clientX, y: e.clientY }
     const hit = hitTest(pos)
-    selectedId.current = hit?.id ?? null
+    const newId = hit?.id ?? null
+    setSelectedId(newId)
     if (hit) {
       dragRef.current = {
         id: hit.id,
@@ -172,7 +155,6 @@ export default function App() {
     const dx = e.clientX - d.mouseStart.x
     const dy = e.clientY - d.mouseStart.y
     const newPos: Vec2 = { x: d.objStart.x + dx, y: d.objStart.y + dy }
-
     if (d.isSource) {
       const src = sceneRef.current.sources.find(s => s.id === d.id)
       if (src) src.position = newPos
@@ -182,18 +164,60 @@ export default function App() {
     }
   }
 
-  function onMouseUp() {
-    dragRef.current = null
+  function onMouseUp() { dragRef.current = null }
+
+  // ── Toolbar callbacks ──────────────────────────────────────────────────────
+  function handleLoadPreset(presetId: string) {
+    const preset = PRESETS.find(p => p.id === presetId)
+    if (!preset) return
+    sceneRef.current = preset.make(dimRef.current.w, dimRef.current.h)
+    setSelectedId(null)
+    bump()
   }
 
+  function handleAddToScene(_scene: Scene) {
+    // scene is already mutated by Toolbar; just force panel refresh
+    bump()
+  }
+
+  function deleteSelected() {
+    const id = selectedIdRef.current
+    if (!id || !sceneRef.current) return
+    sceneRef.current.elements = sceneRef.current.elements.filter(e => e.id !== id)
+    sceneRef.current.sources  = sceneRef.current.sources.filter(s => s.id !== id)
+    setSelectedId(null)
+    bump()
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
   return (
-    <canvas
-      ref={canvasRef}
-      style={{ display: 'block', cursor: 'crosshair' }}
-      onMouseDown={onMouseDown}
-      onMouseMove={onMouseMove}
-      onMouseUp={onMouseUp}
-      onMouseLeave={onMouseUp}
-    />
+    <div style={{ position: 'relative', width: '100vw', height: '100vh', overflow: 'hidden' }}>
+      <canvas
+        ref={canvasRef}
+        style={{ display: 'block', cursor: 'crosshair', position: 'absolute', inset: 0 }}
+        onMouseDown={onMouseDown}
+        onMouseMove={onMouseMove}
+        onMouseUp={onMouseUp}
+        onMouseLeave={onMouseUp}
+      />
+
+      <Toolbar
+        canvasW={canvasSize.w}
+        canvasH={canvasSize.h}
+        onSceneRef={() => sceneRef.current}
+        onAddToScene={handleAddToScene}
+        onLoadPreset={handleLoadPreset}
+        onSelectId={id => { setSelectedId(id); bump() }}
+      />
+
+      {/* key=selectedId+version forces React to re-mount panel on target change */}
+      <PropertiesPanel
+        key={`${selectedId}-${version}`}
+        scene={sceneRef.current}
+        selectedId={selectedId}
+        onUpdate={bump}
+        onDelete={deleteSelected}
+      />
+    </div>
   )
 }

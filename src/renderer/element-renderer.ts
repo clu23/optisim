@@ -5,6 +5,7 @@ import { Block } from '../core/elements/block.ts'
 import { Prism } from '../core/elements/prism.ts'
 import { CurvedMirror } from '../core/elements/curved-mirror.ts'
 import { BeamSource } from '../core/sources/beam.ts'
+import { PointSource } from '../core/sources/point-source.ts'
 import { rotate } from '../core/vector.ts'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -47,7 +48,8 @@ export function drawSource(
     ctx.shadowColor = 'rgba(255, 255, 0, 0.9)'
     ctx.shadowBlur = 20
   }
-  if (source instanceof BeamSource) drawBeamSource(ctx, source)
+  if (source instanceof BeamSource)   drawBeamSource(ctx, source)
+  else if (source instanceof PointSource) drawPointSource(ctx, source)
   ctx.restore()
 }
 
@@ -263,8 +265,45 @@ function drawBeamSource(ctx: CanvasRenderingContext2D, source: BeamSource): void
 
   ctx.restore()
 
-  // Beam direction label
-  void perp // suppress unused warning
+  void perp
+}
+
+function drawPointSource(ctx: CanvasRenderingContext2D, source: PointSource): void {
+  const { x, y } = source.position
+  const R = 10
+  const SPOKES = Math.min(source.numRays, 12)
+
+  ctx.save()
+
+  // Glow core
+  ctx.shadowColor = 'rgba(255, 240, 80, 0.8)'
+  ctx.shadowBlur = 16
+  ctx.fillStyle = 'rgba(255, 255, 180, 0.9)'
+  ctx.beginPath()
+  ctx.arc(x, y, R / 2, 0, Math.PI * 2)
+  ctx.fill()
+
+  // Spoke lines
+  ctx.shadowBlur = 4
+  ctx.strokeStyle = 'rgba(255, 240, 80, 0.55)'
+  ctx.lineWidth = 1.2
+  for (let i = 0; i < SPOKES; i++) {
+    const t = source.angle + (i / SPOKES - 0.5) * source.spreadAngle
+    ctx.beginPath()
+    ctx.moveTo(x, y)
+    ctx.lineTo(x + Math.cos(t) * (R + 8), y + Math.sin(t) * (R + 8))
+    ctx.stroke()
+  }
+
+  // Outer ring
+  ctx.shadowBlur = 0
+  ctx.strokeStyle = 'rgba(255, 240, 80, 0.5)'
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  ctx.arc(x, y, R, 0, Math.PI * 2)
+  ctx.stroke()
+
+  ctx.restore()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
