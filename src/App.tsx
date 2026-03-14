@@ -1,7 +1,8 @@
 import { useRef, useEffect, useState, useCallback } from 'react'
 import type { Scene, Vec2, TraceResult } from './core/types.ts'
 import { traceRay } from './core/tracer.ts'
-import { drawScene } from './renderer/canvas-renderer.ts'
+import { drawScene, drawHUD, screenToWorld, defaultView } from './renderer/canvas-renderer.ts'
+import type { ViewTransform } from './renderer/canvas-renderer.ts'
 import { PropertiesPanel } from './ui/PropertiesPanel.tsx'
 import { Toolbar } from './ui/Toolbar.tsx'
 import { PRESETS } from './ui/presets.ts'
@@ -17,14 +18,23 @@ function traceAll(scene: Scene): TraceResult[] {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Drag state
+// Drag state (world-space coordinates)
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface Drag {
   id: string
   isSource: boolean
-  objStart: Vec2
+  objStart: Vec2        // world position of object at drag start
+  worldMouseStart: Vec2 // world position of mouse at drag start
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Pan state
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface Pan {
   mouseStart: Vec2
+  viewStart: ViewTransform
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -35,13 +45,13 @@ export default function App() {
   const canvasRef  = useRef<HTMLCanvasElement>(null)
   const sceneRef   = useRef<Scene | null>(null)
   const dragRef    = useRef<Drag | null>(null)
+  const panRef     = useRef<Pan | null>(null)
   const rafRef     = useRef(0)
-  const dimRef     = useRef({ w: window.innerWidth, h: window.innerHeight })
+  const viewRef    = useRef<ViewTransform>(defaultView())
 
   // React state — drives UI re-renders (panel + toolbar)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [version, setVersion]       = useState(0)  // bump to refresh panel
-  const [canvasSize, setCanvasSize] = useState({ w: window.innerWidth, h: window.innerHeight })
 
   // Keep a ref in sync so RAF / event handlers can read without stale closure
   const selectedIdRef = useRef<string | null>(null)
@@ -57,19 +67,48 @@ export default function App() {
     function resize() {
       canvas.width  = window.innerWidth
       canvas.height = window.innerHeight
-      dimRef.current = { w: canvas.width, h: canvas.height }
-      setCanvasSize({ w: canvas.width, h: canvas.height })
     }
     resize()
     window.addEventListener('resize', resize)
 
-    // Load default preset
+    // Center view on canvas origin
+    viewRef.current = {
+      offsetX: canvas.width  / 2,
+      offsetY: canvas.height / 2,
+      scale: 1,
+    }
+
+    // Load default preset — place scene around canvas center in world space
     sceneRef.current = PRESETS[0].make(canvas.width, canvas.height)
 
     function loop() {
       if (!sceneRef.current) return
+      const { width, height } = canvas
+      const { offsetX, offsetY, scale } = viewRef.current
+
+      // World-space bounds visible on screen
+      const worldBounds = {
+        left:   -offsetX / scale,
+        top:    -offsetY / scale,
+        right:  (width  - offsetX) / scale,
+        bottom: (height - offsetY) / scale,
+      }
+
       const results = traceAll(sceneRef.current)
-      drawScene(ctx, sceneRef.current, results, selectedIdRef.current)
+
+      // Background clear (screen space)
+      ctx.fillStyle = '#080c14'
+      ctx.fillRect(0, 0, width, height)
+
+      // World-space content (transformed)
+      ctx.save()
+      ctx.setTransform(scale, 0, 0, scale, offsetX, offsetY)
+      drawScene(ctx, sceneRef.current, results, selectedIdRef.current, worldBounds, scale)
+      ctx.restore()
+
+      // HUD overlay (screen space)
+      drawHUD(ctx, width, height, scale)
+
       rafRef.current = requestAnimationFrame(loop)
     }
     rafRef.current = requestAnimationFrame(loop)
@@ -80,19 +119,37 @@ export default function App() {
     }
   }, [])
 
-  // ── Wheel: fine rotation (0.1°/cran, Shift → 5°/cran) ────────────────────
+  // ── Helper: screen → world ─────────────────────────────────────────────────
+  function s2w(sx: number, sy: number): Vec2 {
+    return screenToWorld(sx, sy, viewRef.current)
+  }
+
+  // ── Wheel: zoom (no selection) or rotate (selection) ──────────────────────
   useEffect(() => {
     const canvas = canvasRef.current!
     function onWheel(e: WheelEvent) {
-      const id = selectedIdRef.current
-      if (!id || !sceneRef.current) return
       e.preventDefault()
-      const deg  = e.shiftKey ? 5 : 0.1
-      const delta = Math.sign(e.deltaY) * deg * (Math.PI / 180)
-      const el  = sceneRef.current.elements.find(x => x.id === id)
-      if (el)  { el.angle += delta; bump(); return }
-      const src = sceneRef.current.sources.find(x => x.id === id)
-      if (src) { src.angle += delta; bump() }
+      const id = selectedIdRef.current
+
+      if (id && sceneRef.current) {
+        // Rotate selected element
+        const deg   = e.shiftKey ? 5 : 0.1
+        const delta = Math.sign(e.deltaY) * deg * (Math.PI / 180)
+        const el  = sceneRef.current.elements.find(x => x.id === id)
+        if (el)  { el.angle += delta; bump(); return }
+        const src = sceneRef.current.sources.find(x => x.id === id)
+        if (src) { src.angle += delta; bump() }
+      } else {
+        // Zoom centered on mouse cursor
+        const factor   = e.deltaY < 0 ? 1.1 : 1 / 1.1
+        const v        = viewRef.current
+        const newScale = Math.max(0.05, Math.min(20, v.scale * factor))
+        viewRef.current = {
+          scale:   newScale,
+          offsetX: e.clientX - (e.clientX - v.offsetX) / v.scale * newScale,
+          offsetY: e.clientY - (e.clientY - v.offsetY) / v.scale * newScale,
+        }
+      }
     }
     canvas.addEventListener('wheel', onWheel, { passive: false })
     return () => canvas.removeEventListener('wheel', onWheel)
@@ -109,22 +166,24 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKeyDown)
   })
 
-  // ── Hit testing ────────────────────────────────────────────────────────────
-  function hitTest(pos: Vec2): { id: string; isSource: boolean; objPos: Vec2 } | null {
+  // ── Hit testing (world space) ───────────────────────────────────────────────
+  function hitTest(worldPos: Vec2): { id: string; isSource: boolean; objPos: Vec2 } | null {
     if (!sceneRef.current) return null
     const { elements, sources } = sceneRef.current
-    const M = 12
+    // Hit margin in world pixels (constant 12 screen px)
+    const M = 12 / viewRef.current.scale
 
     for (let i = elements.length - 1; i >= 0; i--) {
       const el = elements[i]
       const bb = el.getBoundingBox()
-      if (pos.x >= bb.min.x - M && pos.x <= bb.max.x + M &&
-          pos.y >= bb.min.y - M && pos.y <= bb.max.y + M) {
+      if (worldPos.x >= bb.min.x - M && worldPos.x <= bb.max.x + M &&
+          worldPos.y >= bb.min.y - M && worldPos.y <= bb.max.y + M) {
         return { id: el.id, isSource: false, objPos: { ...el.position } }
       }
     }
+    const srcRadius = 32 / viewRef.current.scale
     for (const src of sources) {
-      if (Math.hypot(pos.x - src.position.x, pos.y - src.position.y) < 32) {
+      if (Math.hypot(worldPos.x - src.position.x, worldPos.y - src.position.y) < srcRadius) {
         return { id: src.id, isSource: true, objPos: { ...src.position } }
       }
     }
@@ -133,28 +192,61 @@ export default function App() {
 
   // ── Mouse handlers ─────────────────────────────────────────────────────────
   function onMouseDown(e: React.MouseEvent<HTMLCanvasElement>) {
-    // Don't steal focus from panel inputs
     if ((e.target as HTMLElement) !== canvasRef.current) return
-    const pos: Vec2 = { x: e.clientX, y: e.clientY }
-    const hit = hitTest(pos)
+
+    // Middle mouse → pan
+    if (e.button === 1) {
+      e.preventDefault()
+      panRef.current = {
+        mouseStart: { x: e.clientX, y: e.clientY },
+        viewStart: { ...viewRef.current },
+      }
+      return
+    }
+
+    if (e.button !== 0) return
+
+    const worldPos = s2w(e.clientX, e.clientY)
+    const hit = hitTest(worldPos)
     const newId = hit?.id ?? null
     setSelectedId(newId)
+
     if (hit) {
       dragRef.current = {
         id: hit.id,
         isSource: hit.isSource,
         objStart: hit.objPos,
-        mouseStart: pos,
+        worldMouseStart: worldPos,
+      }
+    } else {
+      // Left-drag on background → pan
+      panRef.current = {
+        mouseStart: { x: e.clientX, y: e.clientY },
+        viewStart: { ...viewRef.current },
       }
     }
   }
 
   function onMouseMove(e: React.MouseEvent<HTMLCanvasElement>) {
+    // Pan takes priority
+    const pan = panRef.current
+    if (pan) {
+      viewRef.current = {
+        scale:   pan.viewStart.scale,
+        offsetX: pan.viewStart.offsetX + (e.clientX - pan.mouseStart.x),
+        offsetY: pan.viewStart.offsetY + (e.clientY - pan.mouseStart.y),
+      }
+      return
+    }
+
+    // Drag element / source
     const d = dragRef.current
     if (!d || !sceneRef.current) return
-    const dx = e.clientX - d.mouseStart.x
-    const dy = e.clientY - d.mouseStart.y
-    const newPos: Vec2 = { x: d.objStart.x + dx, y: d.objStart.y + dy }
+    const worldPos = s2w(e.clientX, e.clientY)
+    const newPos: Vec2 = {
+      x: d.objStart.x + (worldPos.x - d.worldMouseStart.x),
+      y: d.objStart.y + (worldPos.y - d.worldMouseStart.y),
+    }
     if (d.isSource) {
       const src = sceneRef.current.sources.find(s => s.id === d.id)
       if (src) src.position = newPos
@@ -164,19 +256,28 @@ export default function App() {
     }
   }
 
-  function onMouseUp() { dragRef.current = null }
+  function onMouseUp() {
+    dragRef.current = null
+    panRef.current  = null
+  }
 
   // ── Toolbar callbacks ──────────────────────────────────────────────────────
   function handleLoadPreset(presetId: string) {
     const preset = PRESETS.find(p => p.id === presetId)
     if (!preset) return
-    sceneRef.current = preset.make(dimRef.current.w, dimRef.current.h)
+    const canvas = canvasRef.current!
+    sceneRef.current = preset.make(canvas.width, canvas.height)
     setSelectedId(null)
     bump()
   }
 
   function handleAddToScene(_scene: Scene) {
-    // scene is already mutated by Toolbar; just force panel refresh
+    bump()
+  }
+
+  function handleSceneLoaded(scene: Scene) {
+    sceneRef.current = scene
+    setSelectedId(null)
     bump()
   }
 
@@ -199,15 +300,17 @@ export default function App() {
         onMouseMove={onMouseMove}
         onMouseUp={onMouseUp}
         onMouseLeave={onMouseUp}
+        onContextMenu={e => e.preventDefault()}
       />
 
       <Toolbar
-        canvasW={canvasSize.w}
-        canvasH={canvasSize.h}
+        canvasW={window.innerWidth}
+        canvasH={window.innerHeight}
         onSceneRef={() => sceneRef.current}
         onAddToScene={handleAddToScene}
         onLoadPreset={handleLoadPreset}
         onSelectId={id => { setSelectedId(id); bump() }}
+        onSceneLoaded={handleSceneLoaded}
       />
 
       {/* key=selectedId+version forces React to re-mount panel on target change */}

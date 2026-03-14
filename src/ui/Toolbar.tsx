@@ -8,6 +8,7 @@ import { CurvedMirror } from '../core/elements/curved-mirror.ts'
 import { BeamSource } from '../core/sources/beam.ts'
 import { PointSource } from '../core/sources/point-source.ts'
 import { PRESETS } from './presets.ts'
+import { downloadScene, loadSceneFromFile } from '../serialization/scene-serializer.ts'
 
 interface Props {
   canvasW: number
@@ -16,13 +17,14 @@ interface Props {
   onLoadPreset: (presetId: string) => void
   onSceneRef: () => Scene | null
   onSelectId: (id: string) => void
+  onSceneLoaded: (scene: Scene) => void
 }
 
 function uid(prefix: string) {
   return `${prefix}-${Date.now()}`
 }
 
-export function Toolbar({ canvasW, canvasH, onSceneRef, onAddToScene, onLoadPreset, onSelectId }: Props) {
+export function Toolbar({ canvasW, canvasH, onSceneRef, onAddToScene, onLoadPreset, onSelectId, onSceneLoaded }: Props) {
   const cx = canvasW / 2
   const cy = canvasH / 2
 
@@ -119,6 +121,24 @@ export function Toolbar({ canvasW, canvasH, onSceneRef, onAddToScene, onLoadPres
       <span className="toolbar-label">Sources</span>
       <button className="toolbar-btn" onClick={addBeam} title="Faisceau parallèle">⇒ Faisceau</button>
       <button className="toolbar-btn" onClick={addPointSrc} title="Source ponctuelle">✦ Point</button>
+
+      <div className="toolbar-sep" style={{ marginLeft: 'auto' }} />
+
+      {/* Fichier */}
+      <button
+        className="toolbar-btn"
+        title="Sauvegarder la scène (.json)"
+        onClick={() => { const s = onSceneRef(); if (s) downloadScene(s) }}
+      >
+        ↓ Sauvegarder
+      </button>
+      <button
+        className="toolbar-btn"
+        title="Charger une scène (.json)"
+        onClick={() => loadSceneFromFile().then(onSceneLoaded).catch(console.error)}
+      >
+        ↑ Charger
+      </button>
     </div>
   )
 }

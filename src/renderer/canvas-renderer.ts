@@ -2,6 +2,25 @@ import type { Scene, TraceResult } from '../core/types.ts'
 import { drawElement, drawSource } from './element-renderer.ts'
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ViewTransform — transformation de vue (zoom + pan)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface ViewTransform {
+  offsetX: number
+  offsetY: number
+  scale: number
+}
+
+export function defaultView(): ViewTransform {
+  return { offsetX: 0, offsetY: 0, scale: 1 }
+}
+
+/** Convertit des coordonnées écran → monde. */
+export function screenToWorld(sx: number, sy: number, v: ViewTransform): { x: number; y: number } {
+  return { x: (sx - v.offsetX) / v.scale, y: (sy - v.offsetY) / v.scale }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // wavelengthToColor — CIE approximation pour le spectre visible
 //
 // Entrée : longueur d'onde λ en nm (380–780)
@@ -30,33 +49,45 @@ export function wavelengthToColor(wavelength: number, alpha = 1): string {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// drawGrid — grille de fond (mineure + majeure)
+// drawGrid — grille de fond adaptative (espace monde)
+//
+// Appelé sous ctx.setTransform — dessine uniquement la région visible.
+// lineWidth compensé pour rester constant en pixels écran.
 // ─────────────────────────────────────────────────────────────────────────────
 
-function drawGrid(ctx: CanvasRenderingContext2D, width: number, height: number): void {
+function drawGrid(
+  ctx: CanvasRenderingContext2D,
+  left: number, top: number, right: number, bottom: number,
+  scale: number,
+): void {
   const MINOR = 25
   const MAJOR = 100
+  const lw = 1 / scale   // largeur constante en pixels écran
 
   ctx.save()
 
   // Lignes mineures
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)'
-  ctx.lineWidth = 0.5
-  for (let x = 0; x <= width; x += MINOR) {
-    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke()
+  ctx.lineWidth = lw * 0.5
+  const mx0 = Math.floor(left / MINOR) * MINOR
+  const my0 = Math.floor(top  / MINOR) * MINOR
+  for (let x = mx0; x <= right;  x += MINOR) {
+    ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke()
   }
-  for (let y = 0; y <= height; y += MINOR) {
-    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke()
+  for (let y = my0; y <= bottom; y += MINOR) {
+    ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(right, y); ctx.stroke()
   }
 
   // Lignes majeures
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.10)'
-  ctx.lineWidth = 1
-  for (let x = 0; x <= width; x += MAJOR) {
-    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke()
+  ctx.lineWidth = lw
+  const Mx0 = Math.floor(left / MAJOR) * MAJOR
+  const My0 = Math.floor(top  / MAJOR) * MAJOR
+  for (let x = Mx0; x <= right;  x += MAJOR) {
+    ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke()
   }
-  for (let y = 0; y <= height; y += MAJOR) {
-    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke()
+  for (let y = My0; y <= bottom; y += MAJOR) {
+    ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(right, y); ctx.stroke()
   }
 
   ctx.restore()
@@ -66,20 +97,21 @@ function drawGrid(ctx: CanvasRenderingContext2D, width: number, height: number):
 // drawRays — segments de rayons colorés par longueur d'onde, avec halo
 // ─────────────────────────────────────────────────────────────────────────────
 
-function drawRays(ctx: CanvasRenderingContext2D, results: TraceResult[]): void {
+function drawRays(ctx: CanvasRenderingContext2D, results: TraceResult[], scale: number): void {
+  const lw = 1.5 / scale
+
   for (const result of results) {
     for (const seg of result.segments) {
       const color = wavelengthToColor(seg.wavelength, seg.intensity * 0.9)
 
       ctx.save()
       ctx.strokeStyle = color
-      ctx.lineWidth = 1.5
+      ctx.lineWidth = lw
       ctx.shadowColor = color
-      ctx.shadowBlur = 5
+      ctx.shadowBlur = 5 / scale
       ctx.globalAlpha = Math.max(0.1, seg.intensity)
 
       if (seg.curvePoints && seg.curvePoints.length > 1) {
-        // Tracé courbe (phase 4 GRIN)
         ctx.beginPath()
         ctx.moveTo(seg.curvePoints[0].x, seg.curvePoints[0].y)
         for (let i = 1; i < seg.curvePoints.length; i++) {
@@ -99,19 +131,34 @@ function drawRays(ctx: CanvasRenderingContext2D, results: TraceResult[]): void {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// drawHUD — overlay d'aide minimaliste
+// drawHUD — overlay écran (hors transformation monde)
 // ─────────────────────────────────────────────────────────────────────────────
 
-function drawHUD(ctx: CanvasRenderingContext2D, _width: number, height: number): void {
+export function drawHUD(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  scale: number,
+): void {
   ctx.save()
   ctx.fillStyle = 'rgba(255, 255, 255, 0.22)'
   ctx.font = '11px monospace'
-  ctx.fillText('Clic : sélectionner   ·   Glisser : déplacer   ·   Molette : pivoter', 12, height - 12)
+  ctx.fillText(
+    'Clic : sélectionner  ·  Glisser : déplacer  ·  Molette sélection : pivoter  ·  Molette fond : zoom  ·  Drag fond / clic milieu : pan',
+    12, height - 12,
+  )
+  // Niveau de zoom — coin supérieur droit
+  const zoomPct = `${Math.round(scale * 100)}%`
+  ctx.font = '12px monospace'
+  ctx.textAlign = 'right'
+  ctx.fillText(zoomPct, width - 10, 20)
   ctx.restore()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// drawScene — point d'entrée principal du renderer
+// drawScene — contenu monde (appelé sous ctx.setTransform)
+//
+// Ne fait PAS le clear de fond ni le HUD — la boucle RAF s'en charge.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function drawScene(
@@ -119,29 +166,22 @@ export function drawScene(
   scene: Scene,
   results: TraceResult[],
   selectedId: string | null,
+  worldBounds: { left: number; top: number; right: number; bottom: number },
+  scale: number,
 ): void {
-  const { width, height } = ctx.canvas
+  // 1. Grille
+  drawGrid(ctx, worldBounds.left, worldBounds.top, worldBounds.right, worldBounds.bottom, scale)
 
-  // 1. Fond sombre
-  ctx.fillStyle = '#080c14'
-  ctx.fillRect(0, 0, width, height)
+  // 2. Rayons (sous les éléments — visibles par transparence du verre)
+  drawRays(ctx, results, scale)
 
-  // 2. Grille
-  drawGrid(ctx, width, height)
-
-  // 3. Rayons (sous les éléments — visibles par transparence du verre)
-  drawRays(ctx, results)
-
-  // 4. Éléments optiques
+  // 3. Éléments optiques
   for (const element of scene.elements) {
     drawElement(ctx, element, element.id === selectedId)
   }
 
-  // 5. Sources
+  // 4. Sources
   for (const source of scene.sources) {
     drawSource(ctx, source, source.id === selectedId)
   }
-
-  // 6. HUD
-  drawHUD(ctx, width, height)
 }
