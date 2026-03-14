@@ -81,9 +81,14 @@ export class ThinLensSurface implements OpticalSurface {
   deflect(incomingDir: Vec2, hitPoint: Vec2): Vec2 {
     // Hauteur signée du point d'impact par rapport au centre de la lentille
     const h = dot(sub(hitPoint, this.center), this.lensDir)
-    // Composante axiale : facteur correctif pour les rayons non-paraxiaux
-    const axisComp = dot(incomingDir, this.axisDir)
-    // d_out = normalize(d_in − (h/f)·axisComp·lensDir)
+    // Composante axiale : facteur correctif non-paraxial.
+    // On utilise |d⃗·â| (valeur absolue) pour garantir la symétrie :
+    // un rayon venant de gauche (axisComp > 0) et un rayon venant de droite
+    // (axisComp < 0) doivent tous deux converger, respectivement vers F₂ et F₁.
+    // Avec axisComp signé, le terme (h/f)·axisComp·l̂ changerait de signe pour
+    // les rayons de droite, inversant la déviation (divergence au lieu de convergence).
+    const axisComp = Math.abs(dot(incomingDir, this.axisDir))
+    // d_out = normalize(d_in − (h/f)·|axisComp|·lensDir)
     return normalize(sub(incomingDir, scale(this.lensDir, h * axisComp / this.focalLength)))
   }
 }

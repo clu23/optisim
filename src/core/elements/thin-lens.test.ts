@@ -400,3 +400,81 @@ describe('V4 — lentille divergente f = −100 : foyer virtuel en x = −100', 
     })
   }
 })
+
+// ─── Symétrie gauche/droite ───────────────────────────────────────────────────
+//
+// Bug reproduit : un rayon parallèle venant de la DROITE (direction (−1,0))
+// doit converger au foyer gauche F₁ = (−f, 0), symétrique de F₂.
+//
+// Avec la formule buguée axisComp = d⃗·â < 0 depuis la droite, le terme
+// (h/f)·axisComp·l̂ change de signe → divergence au lieu de convergence.
+//
+// Correction : utiliser |axisComp| = |d⃗·â|.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('Symétrie gauche/droite — bug convergence depuis la droite', () => {
+  const F = 100
+  const lens = new ThinLens({ id: 'sym', position: { x: 0, y: 0 }, angle: 0, focalLength: F, height: 300 })
+  const surface = lens.getSurfaces()[0] as ThinLensSurface
+
+  const heights = [-80, -50, -30, 30, 50, 80]
+
+  // ── Rayon de droite : foyer gauche F₁ = (−f, 0) ──────────────────────────
+
+  for (const h of heights) {
+    it(`rayon de droite (−1,0) h=${h} : foyer gauche exactement à x = −f = ${-F}`, () => {
+      const dOut = surface.deflect({ x: -1, y: 0 }, { x: 0, y: h })
+      // axisCrossX trouve le croisement de la droite (0,h)+t·dOut avec y=0
+      const xFocus = axisCrossX({ x: 0, y: h }, dOut)
+      expect(Math.abs(xFocus - (-F))).toBeLessThan(EPS)
+    })
+  }
+
+  // ── Égalité des distances focales des deux côtés ──────────────────────────
+
+  for (const h of heights) {
+    it(`distance focale : |f_gauche| = |f_droite| pour h = ${h}`, () => {
+      const dLeft  = surface.deflect({ x:  1, y: 0 }, { x: 0, y: h })
+      const dRight = surface.deflect({ x: -1, y: 0 }, { x: 0, y: h })
+      const xLeft  = axisCrossX({ x: 0, y: h }, dLeft)   // doit valoir +F
+      const xRight = axisCrossX({ x: 0, y: h }, dRight)  // doit valoir −F
+      // Les deux distances au centre de la lentille doivent être identiques
+      expect(Math.abs(Math.abs(xLeft) - Math.abs(xRight))).toBeLessThan(EPS)
+    })
+  }
+
+  // ── Réversibilité optique ─────────────────────────────────────────────────
+  //
+  // Si d_in → d_out, alors −d_out doit redonner −d_in (renversement temporel).
+  // Teste pour des rayons incident depuis les deux côtés.
+
+  for (const h of [50, -50, 30]) {
+    it(`réversibilité (de gauche) h=${h} : −d_out tracé → (−1, 0)`, () => {
+      const dFwd = surface.deflect({ x: 1, y: 0 }, { x: 0, y: h })
+      const dRev = surface.deflect({ x: -dFwd.x, y: -dFwd.y }, { x: 0, y: h })
+      // Le retracé doit ressortir dans la direction opposée à l'original (−1, 0)
+      expect(dRev.x).toBeCloseTo(-1, 9)
+      expect(Math.abs(dRev.y)).toBeLessThan(EPS)
+    })
+
+    it(`réversibilité (de droite) h=${h} : −d_out tracé → (+1, 0)`, () => {
+      const dFwd = surface.deflect({ x: -1, y: 0 }, { x: 0, y: h })
+      const dRev = surface.deflect({ x: -dFwd.x, y: -dFwd.y }, { x: 0, y: h })
+      expect(dRev.x).toBeCloseTo(1, 9)
+      expect(Math.abs(dRev.y)).toBeLessThan(EPS)
+    })
+  }
+
+  // ── Rayon depuis F₂ (côté droit) → ressort parallèle vers la gauche ──────
+
+  for (const h of [40, -40, 60]) {
+    it(`rayon de F₂=(+f,0) vers (0,${h}) → sort parallèle (d_out = (−1, 0))`, () => {
+      // Direction de F₂=(100,0) vers le point (0, h) : normalize(−f, h)
+      const dIn = normalize({ x: -F, y: h })
+      const dOut = surface.deflect(dIn, { x: 0, y: h })
+      // Le rayon sort parallèle à l'axe, vers la gauche
+      expect(Math.abs(dOut.y)).toBeLessThan(EPS)
+      expect(dOut.x).toBeLessThan(0)
+    })
+  }
+})
