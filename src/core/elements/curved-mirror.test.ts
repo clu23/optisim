@@ -141,12 +141,8 @@ describe('CurvedMirror — intersection concave', () => {
 
   it('rayon derrière le miroir : pas d\'intersection', () => {
     // Rayon allant vers la droite (+x), part de gauche — s'éloigne du miroir
-    const ray = makeRay(-50, 0, 1, 0)
-    // Ce rayon est dans la mauvaise direction pour frapper l'arc
-    // (l'arc fait face au +x, donc les rayons venant du +x ont t > 0)
-    // Un rayon allant dans le +x depuis la gauche passe derrière le miroir.
-    // t = 400 - 0 / (-1) → ici on teste le rayon allant dans le mauvais sens
-    const ray2 = makeRay(-50, 10, -1, 0)  // allant à gauche, ne peut pas atteindre x≈0 en partant de x=-50
+    // Rayon allant vers la gauche depuis x=-50 : ne peut jamais atteindre le miroir en x≈0
+    const ray2 = makeRay(-50, 10, -1, 0)
     expect(surface.intersect(ray2)).toBeNull()
   })
 

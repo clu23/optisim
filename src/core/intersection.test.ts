@@ -15,8 +15,6 @@ function ray(ox: number, oy: number, dx: number, dy: number): Ray {
   }
 }
 
-const EPS = 1e-9
-
 function near(a: number, b: number, eps = 1e-9) {
   expect(Math.abs(a - b)).toBeLessThan(eps)
 }

@@ -12,7 +12,6 @@ import { FlatMirror } from './flat-mirror.ts'
 import { reflect, incidenceAngle } from '../optics.ts'
 import { length, normalize } from '../vector.ts'
 
-const DEG = Math.PI / 180
 const RAD = 180 / Math.PI
 const EPS = 1e-6
 

@@ -1,5 +1,5 @@
 import type { Vec2, Ray } from './types.ts'
-import { sub, dot, scale, normalize, length } from './vector.ts'
+import { sub, dot, normalize, length } from './vector.ts'
 
 // Résultat d'intersection brut (sans surfaceId — fourni par OpticalSurface)
 export interface RawHit {
