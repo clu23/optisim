@@ -197,6 +197,39 @@ describe('D4 — Indice fixe (material=undefined) : comportement Phase 1 inchang
   })
 })
 
+// ─── D5 : Dispersion chromatique diamant ≥ 2× BK7 ───────────────────────────
+//
+// Note : un prisme équilatéral (60°) en diamant (n≈2.42) provoque une réflexion
+// totale interne (angle critique ≈ 24.4°) — aucun rayon ne peut en sortir.
+// On mesure donc la dispersion par Δn = n(450 nm) − n(700 nm), qui est
+// proportionnelle à la dispersion angulaire et indépendante de la géométrie.
+//
+// BK7 (crown) :  Δn ≈ 0.012 → nombre d'Abbe ≈ 64 (faible dispersion)
+// Diamant       :  Δn ≈ 0.038 → nombre d'Abbe ≈ 44 (forte dispersion, feu visible)
+// ─────────────────────────────────────────────────────────────────────────────
+describe('D5 — Dispersion Δn : diamant ≥ 2× BK7 (450–700 nm)', () => {
+  const dn = (mat: 'BK7' | 'diamond') =>
+    materialIndex(mat, 450) - materialIndex(mat, 700)
+
+  it('diamant disperse plus que BK7 sur 450–700 nm', () => {
+    expect(dn('diamond')).toBeGreaterThan(dn('BK7'))
+  })
+
+  it('Δn diamant ≥ 2× Δn BK7', () => {
+    expect(dn('diamond') / dn('BK7')).toBeGreaterThanOrEqual(2)
+  })
+
+  it('Δn BK7 sur le prisme 60° (traceur) ≥ 0.005° de déviation angulaire', () => {
+    // Vérifie que BK7 disperse correctement dans le traceur
+    const prism = new Prism({ id: 'p', position: { x: 0, y: 0 }, angle: Math.PI, size: 200, n: 1.5, material: 'BK7' })
+    const scene: Scene = { elements: [prism], sources: [], metadata: { name: 'test' } }
+    const r450 = traceRay(makeRay(450, -200, -30), scene)
+    const r700 = traceRay(makeRay(700, -200, -30), scene)
+    const delta = Math.abs(finalAngleDeg(r450) - finalAngleDeg(r700))
+    expect(delta).toBeGreaterThan(0.5)
+  })
+})
+
 // ─── Vérification de la source polychromatique ───────────────────────────────
 describe('BeamSource polychromatique — génère un rayon par longueur d\'onde', () => {
   const src = new BeamSource({

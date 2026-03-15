@@ -19,13 +19,13 @@ export interface CauchyCoeffs {
 // Valeur n_D (raie de sodium 589 nm) donnée à titre indicatif
 // ─────────────────────────────────────────────────────────────────────────────
 
-// nD = indice calculé par Cauchy à 589.3 nm (raie D du sodium).
-// Note : Cauchy est une approximation ; l'erreur vs valeurs Sellmeier est ≤ 0.01.
+// Coefficients ajustés par fit exact sur 3 raies de Fraunhofer (λF=486.1 nm, λD=589.3 nm, λC=656.3 nm).
+// nD = n(589.3 nm) calculé par Cauchy — correspond aux valeurs Schott/référence à ±0.0001.
 export const MATERIALS = {
-  'BK7':     { A: 1.5046, B: 0.00420, C: 0,       label: 'BK7 (crown)',  nD: 1.5167 },
-  'SF11':    { A: 1.7432, B: 0.01154, C: 0,       label: 'SF11 (flint)', nD: 1.7764 },
-  'water':   { A: 1.3199, B: 0.00653, C: 0,       label: 'Eau',          nD: 1.3387 },
-  'diamond': { A: 2.3780, B: 0.01210, C: 0,       label: 'Diamant',      nD: 2.4129 },
+  'BK7':     { A: 1.5027061, B:  0.0054074, C: -0.0001781, label: 'BK7 (crown)',  nD: 1.5168 },
+  'SF11':    { A: 1.7713626, B: -0.0031842, C:  0.0027143, label: 'SF11 (flint)', nD: 1.7847 },
+  'water':   { A: 1.3232871, B:  0.0035551, C: -0.0000632, label: 'Eau',          nD: 1.3330 },
+  'diamond': { A: 2.3769212, B:  0.0146750, C: -0.0002025, label: 'Diamant',      nD: 2.4175 },
 } as const satisfies Record<string, CauchyCoeffs & { label: string; nD: number }>
 
 export type MaterialId = keyof typeof MATERIALS
