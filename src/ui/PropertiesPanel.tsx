@@ -262,8 +262,10 @@ function PrismPanel({ el, onUpdate }: { el: Prism; onUpdate: () => void }) {
   return <>
     <Slider label="Angle" value={el.angle * RAD} min={-180} max={180} step={0.1} unit="°"
       onChange={v => { el.angle = v * DEG; onUpdate() }} />
-    <Slider label="Taille (côté)" value={el.size} min={30} max={400} step={1} unit=" px" digits={0}
+    <Slider label="Taille (jambe)" value={el.size} min={30} max={400} step={1} unit=" px" digits={0}
       onChange={v => { el.size = v; onUpdate() }} />
+    <Slider label="Angle apex" value={el.apexAngle * RAD} min={10} max={120} step={0.5} unit="°"
+      onChange={v => { el.apexAngle = v * DEG; onUpdate() }} />
     <MaterialSelect value={el.material} onChange={v => { el.material = v; onUpdate() }} />
     {!el.material && (
       <Slider label="Indice n" value={el.n} min={1.0} max={2.5} step={0.01} digits={2}

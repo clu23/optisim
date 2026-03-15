@@ -95,6 +95,30 @@ function doubleMirror(w: number, h: number): Scene {
   }
 }
 
+function diamondDispersion(w: number, h: number): Scene {
+  const cx = w / 2, cy = h / 2
+  // Prisme diamant apex 25° — en dessous de l'angle critique (≈24.4°) les rayons
+  // peuvent sortir par la face de droite sans réflexion totale interne.
+  return {
+    elements: [
+      new Prism({
+        id: 'prism-1',
+        position: { x: cx + 40, y: cy },
+        angle: Math.PI,
+        size: 160,
+        apexAngle: 25 * Math.PI / 180,
+        n: 2.42,
+        material: 'diamond',
+        label: 'Diamant 25°',
+      }),
+    ],
+    sources: [
+      new BeamSource({ id: 'beam-1', position: { x: cx - 230, y: cy }, angle: 0, wavelengths: WHITE, numRays: 1, width: 0 }),
+    ],
+    metadata: { name: 'Dispersion — Diamant', description: 'Prisme diamant apex 25°, forte dispersion (V≈44)' },
+  }
+}
+
 function pointSourceDemo(w: number, h: number): Scene {
   const cx = w / 2, cy = h / 2
   return {
@@ -112,6 +136,7 @@ function pointSourceDemo(w: number, h: number): Scene {
 
 export const PRESETS: Preset[] = [
   { id: 'prism',      label: 'Dispersion — Prisme',       make: prismDispersion },
+  { id: 'diamond',    label: 'Dispersion — Diamant',      make: diamondDispersion },
   { id: 'conv-lens',  label: 'Lentille convergente',       make: convergingLens },
   { id: 'div-lens',   label: 'Lentille divergente',        make: divergingLens },
   { id: 'concave',    label: 'Miroir concave',             make: concaveMirror },

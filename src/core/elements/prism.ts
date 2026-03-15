@@ -73,8 +73,14 @@ export interface PrismParams {
   position: Vec2
   /** Rotation du prisme en radians. 0 = apex vers +y. */
   angle: number
-  /** Longueur d'un côté en pixels. */
+  /** Longueur des deux côtés égaux (jambes) en pixels. */
   size: number
+  /**
+   * Angle au sommet (apex) en radians. Défaut : π/3 (60° → prisme équilatéral).
+   * Les deux jambes partant de l'apex ont la même longueur (= size).
+   * La base est calculée : base = 2·size·sin(apexAngle/2).
+   */
+  apexAngle?: number
   /** Indice de réfraction fixe (utilisé si material est absent). */
   n: number
   /**
@@ -91,39 +97,65 @@ export class Prism implements OpticalElement {
   position: Vec2
   angle: number
   size: number
+  apexAngle: number
   n: number
   material: MaterialId | undefined
   label: string
 
-  constructor({ id, position, angle, size, n, material, label }: PrismParams) {
+  constructor({ id, position, angle, size, apexAngle, n, material, label }: PrismParams) {
     this.id = id
     this.position = position
     this.angle = angle
     this.size = size
+    this.apexAngle = apexAngle ?? Math.PI / 3
     this.n = n
     this.material = material
     this.label = label ?? 'Prisme'
   }
 
-  /** Rayon du cercle circonscrit : R = size / √3. */
+  /**
+   * Rayon du cercle circonscrit.
+   * Pour un triangle isocèle avec jambe L et angle au sommet α :
+   *   R = L / (2·cos(α/2))
+   * Cas équilatéral (α=60°) : R = L / (2·cos(30°)) = L / √3. ✓
+   */
   circumradius(): number {
-    return this.size / Math.sqrt(3)
+    return this.size / (2 * Math.cos(this.apexAngle / 2))
   }
 
   /**
    * Calcule les 3 sommets dans le repère monde, ordonnés CCW.
    *   [0] = apex, [1] = bas-gauche, [2] = bas-droite  (pour angle = 0)
+   *
+   * Géométrie locale (triangle isocèle, apex vers +y) :
+   *   h    = size·cos(apexAngle/2)   — hauteur totale
+   *   b/2  = size·sin(apexAngle/2)   — demi-base
+   *   centroïde à h/3 de la base = 2h/3 de l'apex
+   *
+   *   V0 = (0,              +2h/3)   ← apex
+   *   V1 = (−size·sin(α/2), −h/3)   ← bas-gauche
+   *   V2 = (+size·sin(α/2), −h/3)   ← bas-droite
    */
   vertices(): [Vec2, Vec2, Vec2] {
-    const R = this.circumradius()
-    // Angle de base : apex pointe vers +y (π/2), puis rotation par this.angle
-    const base = Math.PI / 2 + this.angle
-    return [0, 1, 2].map(k =>
-      add(this.position, {
-        x: R * Math.cos(base + k * (2 * Math.PI / 3)),
-        y: R * Math.sin(base + k * (2 * Math.PI / 3)),
-      })
-    ) as [Vec2, Vec2, Vec2]
+    const alpha = this.apexAngle
+    const L = this.size
+    const h  = L * Math.cos(alpha / 2)
+    const b2 = L * Math.sin(alpha / 2)
+
+    // Coordonnées locales (apex vers +y, centroïde à l'origine)
+    const local: [Vec2, Vec2, Vec2] = [
+      { x:  0,  y:  2 * h / 3 },
+      { x: -b2, y: -h / 3 },
+      { x:  b2, y: -h / 3 },
+    ]
+
+    // Rotation par this.angle puis translation vers this.position
+    const cosA = Math.cos(this.angle)
+    const sinA = Math.sin(this.angle)
+    return local.map(v => add(this.position, {
+      x: v.x * cosA - v.y * sinA,
+      y: v.x * sinA + v.y * cosA,
+    })) as [Vec2, Vec2, Vec2]
   }
 
   /** Retourne l'indice à la longueur d'onde donnée (Cauchy ou fixe). */

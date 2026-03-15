@@ -99,16 +99,20 @@ describe('Prism — structure', () => {
   })
 })
 
-// ─── Géométrie des sommets (angle = 0) ───────────────────────────────────────
+// ─── Géométrie des sommets — équilatéral (apexAngle = 60°, défaut) ───────────
 
-describe('Prism — sommets (angle = 0, size = 200)', () => {
+describe('Prism — sommets équilatéraux (angle = 0, size = 200)', () => {
   const SIZE = 200
   const prism = new Prism({ id: 'g1', position: { x: 0, y: 0 }, angle: 0, size: SIZE, n: 1.5 })
   const [v0, v1, v2] = prism.vertices()
   const R = prism.circumradius()
 
-  it('circumradius = size/√3', () => {
+  it('circumradius = size / (2·cos(30°)) = size/√3', () => {
     expect(Math.abs(R - SIZE / Math.sqrt(3))).toBeLessThan(EPS_POS)
+  })
+
+  it('apexAngle vaut π/3 par défaut', () => {
+    expect(Math.abs(prism.apexAngle - Math.PI / 3)).toBeLessThan(EPS_POS)
   })
 
   it('V0 est le sommet le plus haut (apex)', () => {
@@ -129,13 +133,9 @@ describe('Prism — sommets (angle = 0, size = 200)', () => {
     expect(Math.abs(v1.y - v2.y)).toBeLessThan(EPS_POS)
   })
 
-  it('triangle équilatéral : les 3 côtés sont égaux à size', () => {
-    const d01 = distance(v0, v1)
-    const d12 = distance(v1, v2)
-    const d20 = distance(v2, v0)
-    expect(Math.abs(d01 - SIZE)).toBeLessThan(EPS_POS)
-    expect(Math.abs(d12 - SIZE)).toBeLessThan(EPS_POS)
-    expect(Math.abs(d20 - SIZE)).toBeLessThan(EPS_POS)
+  it('triangle équilatéral : les 2 jambes sont égales à size', () => {
+    expect(Math.abs(distance(v0, v1) - SIZE)).toBeLessThan(EPS_POS)
+    expect(Math.abs(distance(v2, v0) - SIZE)).toBeLessThan(EPS_POS)
   })
 
   it('tous les angles intérieurs sont 60°', () => {
@@ -170,24 +170,71 @@ describe('Prism — sommets (angle = 0, size = 200)', () => {
   })
 })
 
+// ─── Géométrie — apexAngle non-équilatéral ───────────────────────────────────
+
+describe('Prism — apexAngle = 30° (isocèle non-équilatéral)', () => {
+  const SIZE = 200
+  const APEX = 30 * Math.PI / 180
+  const prism = new Prism({ id: 'iso1', position: { x: 0, y: 0 }, angle: 0, size: SIZE, apexAngle: APEX, n: 1.5 })
+  const [v0, v1, v2] = prism.vertices()
+
+  it('apexAngle est bien 30° (π/6)', () => {
+    expect(prism.apexAngle).toBeCloseTo(APEX, 10)
+  })
+
+  it('angle au sommet (V0) mesure 30°', () => {
+    const ab = normalize(sub(v1, v0))
+    const ac = normalize(sub(v2, v0))
+    const ang = Math.acos(Math.max(-1, Math.min(1, dot(ab, ac)))) * RAD
+    expect(Math.abs(ang - 30)).toBeLessThan(1e-4)
+  })
+
+  it('les deux jambes (V0-V1 et V0-V2) mesurent size', () => {
+    expect(Math.abs(distance(v0, v1) - SIZE)).toBeLessThan(EPS_POS)
+    expect(Math.abs(distance(v2, v0) - SIZE)).toBeLessThan(EPS_POS)
+  })
+
+  it('centroïde = (0, 0)', () => {
+    const cx = (v0.x + v1.x + v2.x) / 3
+    const cy = (v0.y + v1.y + v2.y) / 3
+    expect(Math.abs(cx)).toBeLessThan(EPS_POS)
+    expect(Math.abs(cy)).toBeLessThan(EPS_POS)
+  })
+
+  it('V0 est en haut (apex), V1.y ≈ V2.y (base horizontale)', () => {
+    expect(v0.y).toBeGreaterThan(v1.y)
+    expect(Math.abs(v1.y - v2.y)).toBeLessThan(EPS_POS)
+  })
+
+  it('winding CCW', () => {
+    const v01x = v1.x - v0.x, v01y = v1.y - v0.y
+    const v02x = v2.x - v0.x, v02y = v2.y - v0.y
+    expect(v01x * v02y - v01y * v02x).toBeGreaterThan(0)
+  })
+
+  it('circumradius = size / (2·cos(15°))', () => {
+    const expected = SIZE / (2 * Math.cos(APEX / 2))
+    expect(Math.abs(prism.circumradius() - expected)).toBeLessThan(EPS_POS)
+  })
+})
+
 // ─── Géométrie — rotation ────────────────────────────────────────────────────
 
 describe('Prism — rotation (angle = π/3)', () => {
   const SIZE = 150
   const prism = new Prism({ id: 'r1', position: { x: 0, y: 0 }, angle: Math.PI / 3, size: SIZE, n: 1.5 })
   const [v0, v1, v2] = prism.vertices()
-  const R = prism.circumradius()
 
-  it('les 3 sommets sont à la distance R du centroïde', () => {
-    for (const v of [v0, v1, v2]) {
-      expect(Math.abs(length(v) - R)).toBeLessThan(EPS_POS)
-    }
+  it('les jambes restent égales à size après rotation', () => {
+    expect(Math.abs(distance(v0, v1) - SIZE)).toBeLessThan(EPS_POS)
+    expect(Math.abs(distance(v2, v0) - SIZE)).toBeLessThan(EPS_POS)
   })
 
-  it('les côtés restent égaux à size après rotation', () => {
-    expect(Math.abs(distance(v0, v1) - SIZE)).toBeLessThan(EPS_POS)
-    expect(Math.abs(distance(v1, v2) - SIZE)).toBeLessThan(EPS_POS)
-    expect(Math.abs(distance(v2, v0) - SIZE)).toBeLessThan(EPS_POS)
+  it('le centroïde reste à (0, 0) après rotation', () => {
+    const cx = (v0.x + v1.x + v2.x) / 3
+    const cy = (v0.y + v1.y + v2.y) / 3
+    expect(Math.abs(cx)).toBeLessThan(EPS_POS)
+    expect(Math.abs(cy)).toBeLessThan(EPS_POS)
   })
 })
 
