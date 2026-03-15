@@ -8,6 +8,53 @@ import { Toolbar } from './ui/Toolbar.tsx'
 import { PRESETS } from './ui/presets.ts'
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Fit view to scene — calcule pan + zoom pour que toute la scène soit visible
+// ─────────────────────────────────────────────────────────────────────────────
+
+function fitScene(scene: Scene, vpW: number, vpH: number): ViewTransform {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+
+  function expand(x: number, y: number, r = 0) {
+    minX = Math.min(minX, x - r); maxX = Math.max(maxX, x + r)
+    minY = Math.min(minY, y - r); maxY = Math.max(maxY, y + r)
+  }
+
+  for (const el of scene.elements) {
+    const bb = el.getBoundingBox()
+    expand(bb.min.x, bb.min.y)
+    expand(bb.max.x, bb.max.y)
+  }
+  for (const src of scene.sources) {
+    // Les sources sont des points — on leur donne un rayon fixe
+    expand(src.position.x, src.position.y, 60)
+  }
+
+  if (!isFinite(minX)) {
+    // Scène vide : vue par défaut (origine au centre)
+    return { offsetX: vpW / 2, offsetY: vpH / 2, scale: 1 }
+  }
+
+  const sceneW   = Math.max(maxX - minX, 1)
+  const sceneH   = Math.max(maxY - minY, 1)
+  const sceneCx  = (minX + maxX) / 2
+  const sceneCy  = (minY + maxY) / 2
+
+  // La scène occupe 80 % du viewport (10 % de marge par côté)
+  const FILL  = 0.80
+  const scale = Math.min(
+    (vpW * FILL) / sceneW,
+    (vpH * FILL) / sceneH,
+    4,   // ne pas zoomer au-delà de 4× pour une scène minuscule
+  )
+
+  return {
+    scale,
+    offsetX: vpW / 2 - sceneCx * scale,
+    offsetY: vpH / 2 - sceneCy * scale,
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Trace all rays in scene
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -71,15 +118,9 @@ export default function App() {
     resize()
     window.addEventListener('resize', resize)
 
-    // Center view on canvas origin
-    viewRef.current = {
-      offsetX: canvas.width  / 2,
-      offsetY: canvas.height / 2,
-      scale: 1,
-    }
-
-    // Load default preset — place scene around canvas center in world space
+    // Load default preset then fit the view to its bounding box
     sceneRef.current = PRESETS[0].make(canvas.width, canvas.height)
+    viewRef.current  = fitScene(sceneRef.current, canvas.width, canvas.height)
 
     function loop() {
       if (!sceneRef.current) return
@@ -267,6 +308,7 @@ export default function App() {
     if (!preset) return
     const canvas = canvasRef.current!
     sceneRef.current = preset.make(canvas.width, canvas.height)
+    viewRef.current  = fitScene(sceneRef.current, canvas.width, canvas.height)
     setSelectedId(null)
     bump()
   }
@@ -276,7 +318,9 @@ export default function App() {
   }
 
   function handleSceneLoaded(scene: Scene) {
+    const canvas = canvasRef.current!
     sceneRef.current = scene
+    viewRef.current  = fitScene(scene, canvas.width, canvas.height)
     setSelectedId(null)
     bump()
   }
