@@ -39,8 +39,8 @@ function fitScene(scene: Scene, vpW: number, vpH: number): ViewTransform {
   const sceneCx  = (minX + maxX) / 2
   const sceneCy  = (minY + maxY) / 2
 
-  // La scène occupe 80 % du viewport (10 % de marge par côté)
-  const FILL  = 0.80
+  // La scène occupe 60 % du viewport (20 % de marge par côté)
+  const FILL  = 0.60
   const scale = Math.min(
     (vpW * FILL) / sceneW,
     (vpH * FILL) / sceneH,
