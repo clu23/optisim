@@ -31,10 +31,10 @@ export function drawElement(
   ctx.save()
   if (selected) drawSelectionHalo(ctx, element)
   if (element instanceof FlatMirror)    drawFlatMirror(ctx, element)
-  else if (element instanceof ThinLens) drawThinLens(ctx, element)
+  else if (element instanceof ThinLens) drawThinLens(ctx, element, selected)
   else if (element instanceof Block)    drawBlock(ctx, element)
   else if (element instanceof Prism)    drawPrism(ctx, element)
-  else if (element instanceof CurvedMirror) drawCurvedMirror(ctx, element)
+  else if (element instanceof CurvedMirror) drawCurvedMirror(ctx, element, selected)
   ctx.restore()
 }
 
@@ -113,11 +113,14 @@ function drawFlatMirror(ctx: CanvasRenderingContext2D, mirror: FlatMirror): void
   }
 }
 
-function drawThinLens(ctx: CanvasRenderingContext2D, lens: ThinLens): void {
+function drawThinLens(ctx: CanvasRenderingContext2D, lens: ThinLens, selected: boolean): void {
   const [a, b] = lens.endpoints()
   const axisDir  = lens.axisDirection()
   const converging = lens.focalLength > 0
   const ARROW = 14
+
+  // Axe optique en pointillés (toujours visible)
+  drawOpticalAxis(ctx, lens.position, axisDir, 320)
 
   // Lens line
   ctx.strokeStyle = LENS_COLOR
@@ -151,6 +154,19 @@ function drawThinLens(ctx: CanvasRenderingContext2D, lens: ThinLens): void {
   ctx.textAlign = 'center'
   ctx.fillText(`f=${lens.focalLength}px`, mid.x, mid.y - 18)
   ctx.textAlign = 'left'
+
+  // Foyers F et F' — affichés à la sélection
+  if (selected) {
+    // F' (foyer image) = position + f·axisDir
+    const Fp = lens.focalPoint()
+    // F  (foyer objet) = position − f·axisDir
+    const F: Vec2 = {
+      x: lens.position.x - lens.focalLength * axisDir.x,
+      y: lens.position.y - lens.focalLength * axisDir.y,
+    }
+    drawFocalCross(ctx, F,  'F',  LENS_COLOR)
+    drawFocalCross(ctx, Fp, "F'", LENS_COLOR)
+  }
 }
 
 function drawBlock(ctx: CanvasRenderingContext2D, block: Block): void {
@@ -202,16 +218,14 @@ function drawPrism(ctx: CanvasRenderingContext2D, prism: Prism): void {
   ctx.textAlign = 'left'
 }
 
-function drawCurvedMirror(ctx: CanvasRenderingContext2D, mirror: CurvedMirror): void {
-  const axisDir = rotate({ x: 1, y: 0 }, mirror.angle)
-  const sign    = mirror.concave ? 1 : -1
-  const C: Vec2 = {
-    x: mirror.position.x + sign * axisDir.x * mirror.radius,
-    y: mirror.position.y + sign * axisDir.y * mirror.radius,
-  }
+function drawCurvedMirror(ctx: CanvasRenderingContext2D, mirror: CurvedMirror, selected: boolean): void {
+  const C = mirror.curvatureCenter()
   const arcCenter = mirror.concave ? mirror.angle + Math.PI : mirror.angle
   const t0 = arcCenter - mirror.aperture
   const t1 = arcCenter + mirror.aperture
+
+  // Axe optique en pointillés (toujours visible)
+  drawOpticalAxis(ctx, mirror.position, mirror.axisDirection(), 320)
 
   ctx.strokeStyle = MIRROR_COLOR
   ctx.lineWidth = 3.5
@@ -221,6 +235,13 @@ function drawCurvedMirror(ctx: CanvasRenderingContext2D, mirror: CurvedMirror): 
   ctx.beginPath()
   ctx.arc(C.x, C.y, mirror.radius, t0, t1)
   ctx.stroke()
+
+  // Foyer F et centre C — affichés à la sélection
+  if (selected) {
+    const F = mirror.focalPoint()
+    drawFocalCross(ctx, F, 'F', MIRROR_COLOR)
+    drawFocalCross(ctx, C, 'C', 'rgba(190, 190, 255, 0.85)')
+  }
 }
 
 function drawBeamSource(ctx: CanvasRenderingContext2D, source: BeamSource): void {
@@ -309,6 +330,42 @@ function drawPointSource(ctx: CanvasRenderingContext2D, source: PointSource): vo
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
+
+/** Axe optique en pointillés centré sur `center`, s'étendant de ±halfLen dans la direction `dir`. */
+function drawOpticalAxis(ctx: CanvasRenderingContext2D, center: Vec2, dir: Vec2, halfLen: number): void {
+  ctx.save()
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.18)'
+  ctx.lineWidth = 1
+  ctx.setLineDash([6, 5])
+  ctx.shadowBlur = 0
+  ctx.beginPath()
+  ctx.moveTo(center.x - dir.x * halfLen, center.y - dir.y * halfLen)
+  ctx.lineTo(center.x + dir.x * halfLen, center.y + dir.y * halfLen)
+  ctx.stroke()
+  ctx.restore()
+}
+
+/** Croix + label au point focal ou au centre de courbure. */
+function drawFocalCross(ctx: CanvasRenderingContext2D, pos: Vec2, label: string, color: string): void {
+  const S = 6
+  ctx.save()
+  ctx.strokeStyle = color
+  ctx.lineWidth = 1.5
+  ctx.shadowColor = color
+  ctx.shadowBlur = 5
+  ctx.lineCap = 'round'
+  ctx.beginPath()
+  ctx.moveTo(pos.x - S, pos.y); ctx.lineTo(pos.x + S, pos.y)
+  ctx.moveTo(pos.x, pos.y - S); ctx.lineTo(pos.x, pos.y + S)
+  ctx.stroke()
+  ctx.shadowBlur = 0
+  ctx.fillStyle = color
+  ctx.font = 'italic 11px serif'
+  ctx.textAlign = 'center'
+  ctx.fillText(label, pos.x, pos.y - S - 4)
+  ctx.textAlign = 'left'
+  ctx.restore()
+}
 
 function drawArrow(ctx: CanvasRenderingContext2D, from: Vec2, to: Vec2, color: string): void {
   const dx = to.x - from.x

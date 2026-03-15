@@ -97,16 +97,29 @@ export class CurvedMirror implements OpticalElement {
     this.label = label ?? (concave ? 'Miroir concave' : 'Miroir convexe')
   }
 
+  /** Vecteur unitaire de l'axe optique : rotate({1,0}, angle). */
+  axisDirection(): Vec2 {
+    return rotate({ x: 1, y: 0 }, this.angle)
+  }
+
   /**
-   * Centre de courbure.
+   * Centre de courbure C.
    * Concave : en avant du sommet (côté lumière incidente), à distance R.
    * Convexe : derrière le sommet, à distance R.
    */
-  private curvatureCenter(): Vec2 {
-    const axisDir = rotate({ x: 1, y: 0 }, this.angle)
-    // Concave : C = V + R·axisDir  |  Convexe : C = V − R·axisDir
+  curvatureCenter(): Vec2 {
     const sign = this.concave ? 1 : -1
-    return add(this.position, scale(axisDir, sign * this.radius))
+    return add(this.position, scale(this.axisDirection(), sign * this.radius))
+  }
+
+  /**
+   * Foyer paraxial F = V ± (R/2)·axisDir.
+   * Concave : F est en avant du sommet (côté source), signe +.
+   * Convexe : foyer virtuel derrière le sommet, signe −.
+   */
+  focalPoint(): Vec2 {
+    const sign = this.concave ? 1 : -1
+    return add(this.position, scale(this.axisDirection(), sign * this.radius / 2))
   }
 
   /**
