@@ -1,6 +1,7 @@
 import type { Vec2, Ray, HitResult, OpticalSurface, OpticalElement, BoundingBox } from '../types.ts'
 import { intersectRaySegment } from '../intersection.ts'
 import { add, sub, normalize, rotate } from '../vector.ts'
+import { materialIndex, type MaterialId } from '../dispersion.ts'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // BlockSurface — interface réfractante (segment)
@@ -15,13 +16,14 @@ class BlockSurface implements OpticalSurface {
   readonly id: string
   private readonly a: Vec2
   private readonly b: Vec2
-  private readonly n: number
+  // Fonction d'indice dépendante de λ (Cauchy si matériau, constante sinon)
+  private readonly indexFn: (wavelengthNm: number) => number
 
-  constructor(id: string, a: Vec2, b: Vec2, n: number) {
+  constructor(id: string, a: Vec2, b: Vec2, indexFn: (wavelengthNm: number) => number) {
     this.id = id
     this.a = a
     this.b = b
-    this.n = n
+    this.indexFn = indexFn
   }
 
   intersect(ray: Ray): HitResult | null {
@@ -37,8 +39,9 @@ class BlockSurface implements OpticalSurface {
     return normalize({ x: s.y, y: -s.x })
   }
 
-  getRefractiveIndex(_wavelength: number): number {
-    return this.n
+  // Loi de Cauchy si matériau, indice fixe sinon
+  getRefractiveIndex(wavelength: number): number {
+    return this.indexFn(wavelength)
   }
 }
 
@@ -77,8 +80,13 @@ export interface BlockParams {
   width: number
   /** Hauteur du bloc en pixels (dimension selon l'axe local y). */
   height: number
-  /** Indice de réfraction du matériau (n > 1). */
+  /** Indice de réfraction fixe (utilisé si material est absent). */
   n: number
+  /**
+   * Matériau du catalogue (optionnel). Si présent, remplace n par la loi de
+   * Cauchy : n(λ) varie avec la longueur d'onde → dispersion chromatique.
+   */
+  material?: MaterialId
   label?: string
 }
 
@@ -90,15 +98,17 @@ export class Block implements OpticalElement {
   width: number
   height: number
   n: number
+  material: MaterialId | undefined
   label: string
 
-  constructor({ id, position, angle, width, height, n, label }: BlockParams) {
+  constructor({ id, position, angle, width, height, n, material, label }: BlockParams) {
     this.id = id
     this.position = position
     this.angle = angle
     this.width = width
     this.height = height
     this.n = n
+    this.material = material
     this.label = label ?? 'Bloc'
   }
 
@@ -119,13 +129,20 @@ export class Block implements OpticalElement {
     return local.map(v => add(this.position, rotate(v, this.angle))) as [Vec2, Vec2, Vec2, Vec2]
   }
 
+  /** Retourne l'indice à la longueur d'onde donnée (Cauchy ou fixe). */
+  indexAt(wavelengthNm: number): number {
+    return this.material ? materialIndex(this.material, wavelengthNm) : this.n
+  }
+
   getSurfaces(): OpticalSurface[] {
     const [bl, br, tr, tl] = this.vertices()
+    // La fonction d'indice est partagée par toutes les faces du bloc
+    const fn = (wl: number) => this.indexAt(wl)
     return [
-      new BlockSurface(`${this.id}-s0`, bl, br, this.n),  // face inférieure
-      new BlockSurface(`${this.id}-s1`, br, tr, this.n),  // face droite
-      new BlockSurface(`${this.id}-s2`, tr, tl, this.n),  // face supérieure
-      new BlockSurface(`${this.id}-s3`, tl, bl, this.n),  // face gauche
+      new BlockSurface(`${this.id}-s0`, bl, br, fn),  // face inférieure
+      new BlockSurface(`${this.id}-s1`, br, tr, fn),  // face droite
+      new BlockSurface(`${this.id}-s2`, tr, tl, fn),  // face supérieure
+      new BlockSurface(`${this.id}-s3`, tl, bl, fn),  // face gauche
     ]
   }
 

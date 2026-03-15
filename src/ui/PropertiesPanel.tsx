@@ -9,6 +9,7 @@ import { CurvedMirror } from '../core/elements/curved-mirror.ts'
 import { BeamSource } from '../core/sources/beam.ts'
 import { PointSource } from '../core/sources/point-source.ts'
 import { wavelengthToColor } from '../renderer/canvas-renderer.ts'
+import { MATERIALS, referenceIndex, type MaterialId } from '../core/dispersion.ts'
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -145,6 +146,32 @@ function DragNumber({ label, value, min, max, step, unit = '', digits = 1, onCha
 const Slider = DragNumber
 
 // ─────────────────────────────────────────────────────────────────────────────
+// MaterialSelect — sélecteur de matériau (Cauchy) pour Prisme et Bloc
+// ─────────────────────────────────────────────────────────────────────────────
+
+function MaterialSelect({ value, onChange }: { value: MaterialId | undefined; onChange: (v: MaterialId | undefined) => void }) {
+  return (
+    <div className="prop-row">
+      <div className="prop-header">
+        <span className="prop-label">Matériau</span>
+        <select
+          className="prop-material-select"
+          value={value ?? ''}
+          onChange={e => onChange(e.target.value === '' ? undefined : e.target.value as MaterialId)}
+        >
+          <option value="">n fixe</option>
+          {(Object.keys(MATERIALS) as MaterialId[]).map(id => (
+            <option key={id} value={id}>
+              {MATERIALS[id].label} (n≈{referenceIndex(id).toFixed(3)})
+            </option>
+          ))}
+        </select>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Wavelength picker
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -223,8 +250,11 @@ function BlockPanel({ el, onUpdate }: { el: Block; onUpdate: () => void }) {
       onChange={v => { el.width = v; onUpdate() }} />
     <Slider label="Hauteur" value={el.height} min={10} max={400} step={1} unit=" px" digits={0}
       onChange={v => { el.height = v; onUpdate() }} />
-    <Slider label="Indice n" value={el.n} min={1.0} max={2.5} step={0.01} digits={2}
-      onChange={v => { el.n = v; onUpdate() }} />
+    <MaterialSelect value={el.material} onChange={v => { el.material = v; onUpdate() }} />
+    {!el.material && (
+      <Slider label="Indice n" value={el.n} min={1.0} max={2.5} step={0.01} digits={2}
+        onChange={v => { el.n = v; onUpdate() }} />
+    )}
   </>
 }
 
@@ -234,8 +264,11 @@ function PrismPanel({ el, onUpdate }: { el: Prism; onUpdate: () => void }) {
       onChange={v => { el.angle = v * DEG; onUpdate() }} />
     <Slider label="Taille (côté)" value={el.size} min={30} max={400} step={1} unit=" px" digits={0}
       onChange={v => { el.size = v; onUpdate() }} />
-    <Slider label="Indice n" value={el.n} min={1.0} max={2.5} step={0.01} digits={2}
-      onChange={v => { el.n = v; onUpdate() }} />
+    <MaterialSelect value={el.material} onChange={v => { el.material = v; onUpdate() }} />
+    {!el.material && (
+      <Slider label="Indice n" value={el.n} min={1.0} max={2.5} step={0.01} digits={2}
+        onChange={v => { el.n = v; onUpdate() }} />
+    )}
   </>
 }
 

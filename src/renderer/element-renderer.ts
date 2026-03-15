@@ -1,4 +1,5 @@
 import type { OpticalElement, LightSource, Vec2 } from '../core/types.ts'
+import { MATERIALS } from '../core/dispersion.ts'
 import { FlatMirror } from '../core/elements/flat-mirror.ts'
 import { ThinLens } from '../core/elements/thin-lens.ts'
 import { Block } from '../core/elements/block.ts'
@@ -189,7 +190,8 @@ function drawBlock(ctx: CanvasRenderingContext2D, block: Block): void {
   ctx.fillStyle = 'rgba(120, 200, 255, 0.55)'
   ctx.font = '11px monospace'
   ctx.textAlign = 'center'
-  ctx.fillText(`n=${block.n}`, block.position.x, block.position.y + 4)
+  const blockLabel = block.material ? MATERIALS[block.material].label : `n=${block.n}`
+  ctx.fillText(blockLabel, block.position.x, block.position.y + 4)
   ctx.textAlign = 'left'
 }
 
@@ -214,7 +216,8 @@ function drawPrism(ctx: CanvasRenderingContext2D, prism: Prism): void {
   ctx.fillStyle = 'rgba(120, 200, 255, 0.55)'
   ctx.font = '11px monospace'
   ctx.textAlign = 'center'
-  ctx.fillText(`n=${prism.n}`, prism.position.x, prism.position.y + 4)
+  const prismLabel = prism.material ? MATERIALS[prism.material].label : `n=${prism.n}`
+  ctx.fillText(prismLabel, prism.position.x, prism.position.y + 4)
   ctx.textAlign = 'left'
 }
 

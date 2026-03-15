@@ -394,34 +394,34 @@ I(s) = I₀ × exp(-α × s)
 ### Phase 1 — Fondations (MVP)
 
 **Moteur physique :**
-- [ ] Types et interfaces fondamentales (`Vec2`, `Ray`, `OpticalSurface`, etc.)
-- [ ] Algèbre vectorielle 2D (normalisation, dot, reflect, refract)
-- [ ] Intersection rayon/segment et rayon/cercle
-- [ ] Lois de Snell-Descartes (réflexion + réfraction)
-- [ ] Réflexion totale interne
-- [ ] Traceur de rayons (boucle intersection → interaction → propagation)
-- [ ] Éléments : miroir plan, miroir sphérique, lentille mince, prisme, bloc
+- [x] Types et interfaces fondamentales (`Vec2`, `Ray`, `OpticalSurface`, etc.)
+- [x] Algèbre vectorielle 2D (normalisation, dot, reflect, refract)
+- [x] Intersection rayon/segment et rayon/cercle
+- [x] Lois de Snell-Descartes (réflexion + réfraction)
+- [x] Réflexion totale interne
+- [x] Traceur de rayons (boucle intersection → interaction → propagation)
+- [x] Éléments : miroir plan, miroir sphérique, lentille mince, prisme, bloc
 
 **Rendu :**
-- [ ] Renderer Canvas 2D basique
-- [ ] Dessin des rayons (segments droits colorés)
-- [ ] Dessin des éléments optiques
-- [ ] Grille de fond
-- [ ] Thème sombre
+- [x] Renderer Canvas 2D basique
+- [x] Dessin des rayons (segments droits colorés)
+- [x] Dessin des éléments optiques
+- [x] Grille de fond
+- [x] Thème sombre
 
 **UI :**
-- [ ] Canvas interactif (drag pour déplacer, molette pour rotation)
-- [ ] Panneau de propriétés pour l'élément sélectionné
-- [ ] Barre d'outils pour ajouter des éléments
-- [ ] Sélecteur de scènes prédéfinies
-- [ ] Import/export JSON
+- [x] Canvas interactif (drag pour déplacer, molette pour rotation)
+- [x] Panneau de propriétés pour l'élément sélectionné
+- [x] Barre d'outils pour ajouter des éléments
+- [x] Sélecteur de scènes prédéfinies
+- [x] Import/export JSON
 
 **Validation :**
-- [ ] Test : rayon réfléchi sur miroir plan (θ_r = θ_i)
-- [ ] Test : réfraction verre/air à 30° (vérif analytique)
-- [ ] Test : réflexion totale interne au-delà de θ_c
-- [ ] Test : lentille convergente, faisceau parallèle → convergence au foyer
-- [ ] Test : prisme, déviation minimale
+- [x] Test : rayon réfléchi sur miroir plan (θ_r = θ_i)
+- [x] Test : réfraction verre/air à 30° (vérif analytique)
+- [x] Test : réflexion totale interne au-delà de θ_c
+- [x] Test : lentille convergente, faisceau parallèle → convergence au foyer
+- [x] Test : prisme, déviation minimale
 
 **Livrable :** Application fonctionnelle avec tracé de rayons interactif sur les éléments de base.
 

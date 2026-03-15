@@ -1,6 +1,7 @@
 import type { Vec2, Ray, HitResult, OpticalSurface, OpticalElement, BoundingBox } from '../types.ts'
 import { intersectRaySegment } from '../intersection.ts'
 import { add, normalize, sub } from '../vector.ts'
+import { materialIndex, type MaterialId } from '../dispersion.ts'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PrismSurface — interface réfractante (segment)
@@ -15,13 +16,13 @@ class PrismSurface implements OpticalSurface {
   readonly id: string
   private readonly a: Vec2
   private readonly b: Vec2
-  private readonly n: number
+  private readonly indexFn: (wavelengthNm: number) => number
 
-  constructor(id: string, a: Vec2, b: Vec2, n: number) {
+  constructor(id: string, a: Vec2, b: Vec2, indexFn: (wavelengthNm: number) => number) {
     this.id = id
     this.a = a
     this.b = b
-    this.n = n
+    this.indexFn = indexFn
   }
 
   intersect(ray: Ray): HitResult | null {
@@ -37,8 +38,9 @@ class PrismSurface implements OpticalSurface {
     return normalize({ x: s.y, y: -s.x })
   }
 
-  getRefractiveIndex(_wavelength: number): number {
-    return this.n
+  // Loi de Cauchy si matériau, indice fixe sinon
+  getRefractiveIndex(wavelength: number): number {
+    return this.indexFn(wavelength)
   }
 }
 
@@ -73,8 +75,13 @@ export interface PrismParams {
   angle: number
   /** Longueur d'un côté en pixels. */
   size: number
-  /** Indice de réfraction du matériau (n > 1). */
+  /** Indice de réfraction fixe (utilisé si material est absent). */
   n: number
+  /**
+   * Matériau du catalogue (optionnel). Si présent, remplace n par la loi de
+   * Cauchy : n(λ) varie avec la longueur d'onde → dispersion chromatique.
+   */
+  material?: MaterialId
   label?: string
 }
 
@@ -85,14 +92,16 @@ export class Prism implements OpticalElement {
   angle: number
   size: number
   n: number
+  material: MaterialId | undefined
   label: string
 
-  constructor({ id, position, angle, size, n, label }: PrismParams) {
+  constructor({ id, position, angle, size, n, material, label }: PrismParams) {
     this.id = id
     this.position = position
     this.angle = angle
     this.size = size
     this.n = n
+    this.material = material
     this.label = label ?? 'Prisme'
   }
 
@@ -117,12 +126,18 @@ export class Prism implements OpticalElement {
     ) as [Vec2, Vec2, Vec2]
   }
 
+  /** Retourne l'indice à la longueur d'onde donnée (Cauchy ou fixe). */
+  indexAt(wavelengthNm: number): number {
+    return this.material ? materialIndex(this.material, wavelengthNm) : this.n
+  }
+
   getSurfaces(): OpticalSurface[] {
     const [v0, v1, v2] = this.vertices()
+    const fn = (wl: number) => this.indexAt(wl)
     return [
-      new PrismSurface(`${this.id}-s0`, v0, v1, this.n),  // face gauche
-      new PrismSurface(`${this.id}-s1`, v1, v2, this.n),  // base
-      new PrismSurface(`${this.id}-s2`, v2, v0, this.n),  // face droite
+      new PrismSurface(`${this.id}-s0`, v0, v1, fn),  // face gauche
+      new PrismSurface(`${this.id}-s1`, v1, v2, fn),  // base
+      new PrismSurface(`${this.id}-s2`, v2, v0, fn),  // face droite
     ]
   }
 

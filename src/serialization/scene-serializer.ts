@@ -1,4 +1,5 @@
 import type { Scene } from '../core/types.ts'
+import type { MaterialId } from '../core/dispersion.ts'
 import { FlatMirror } from '../core/elements/flat-mirror.ts'
 import { ThinLens } from '../core/elements/thin-lens.ts'
 import { Block } from '../core/elements/block.ts'
@@ -23,8 +24,8 @@ export interface SceneJSON {
 type ElementJSON =
   | { type: 'flat-mirror';    id: string; label: string; position: { x: number; y: number }; angle: number; length: number }
   | { type: 'thin-lens';      id: string; label: string; position: { x: number; y: number }; angle: number; focalLength: number; height: number }
-  | { type: 'block';          id: string; label: string; position: { x: number; y: number }; angle: number; width: number; height: number; n: number }
-  | { type: 'prism';          id: string; label: string; position: { x: number; y: number }; angle: number; size: number; n: number }
+  | { type: 'block';          id: string; label: string; position: { x: number; y: number }; angle: number; width: number; height: number; n: number; material?: MaterialId }
+  | { type: 'prism';          id: string; label: string; position: { x: number; y: number }; angle: number; size: number; n: number; material?: MaterialId }
   | { type: 'curved-mirror';  id: string; label: string; position: { x: number; y: number }; angle: number; radius: number; aperture: number; concave: boolean }
 
 type SourceJSON =
@@ -44,10 +45,10 @@ export function serializeScene(scene: Scene): SceneJSON {
       return { type: 'thin-lens', id: el.id, label: el.label, position: el.position, angle: el.angle, focalLength: el.focalLength, height: el.height }
     }
     if (el instanceof Block) {
-      return { type: 'block', id: el.id, label: el.label, position: el.position, angle: el.angle, width: el.width, height: el.height, n: el.n }
+      return { type: 'block', id: el.id, label: el.label, position: el.position, angle: el.angle, width: el.width, height: el.height, n: el.n, ...(el.material && { material: el.material }) }
     }
     if (el instanceof Prism) {
-      return { type: 'prism', id: el.id, label: el.label, position: el.position, angle: el.angle, size: el.size, n: el.n }
+      return { type: 'prism', id: el.id, label: el.label, position: el.position, angle: el.angle, size: el.size, n: el.n, ...(el.material && { material: el.material }) }
     }
     if (el instanceof CurvedMirror) {
       return { type: 'curved-mirror', id: el.id, label: el.label, position: el.position, angle: el.angle, radius: el.radius, aperture: el.aperture, concave: el.concave }
@@ -81,8 +82,8 @@ export function deserializeScene(json: SceneJSON): Scene {
     switch (el.type) {
       case 'flat-mirror':   return new FlatMirror(el)
       case 'thin-lens':     return new ThinLens(el)
-      case 'block':         return new Block(el)
-      case 'prism':         return new Prism(el)
+      case 'block':         return new Block({ ...el, material: el.material })
+      case 'prism':         return new Prism({ ...el, material: el.material })
       case 'curved-mirror': return new CurvedMirror(el)
       default: throw new Error(`deserializeScene: type d'élément inconnu "${(el as { type: string }).type}"`)
     }

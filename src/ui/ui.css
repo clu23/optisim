@@ -221,6 +221,26 @@
   background: rgba(200, 60, 60, 0.32);
 }
 
+/* Sélecteur de matériau */
+.prop-material-select {
+  background: rgba(60, 100, 200, 0.18);
+  border: 1px solid rgba(90, 140, 255, 0.25);
+  border-radius: 4px;
+  color: rgba(190, 215, 255, 0.88);
+  font-size: 11px;
+  font-family: monospace;
+  padding: 2px 4px;
+  outline: none;
+  cursor: pointer;
+  max-width: 140px;
+}
+.prop-material-select:hover {
+  border-color: rgba(96, 200, 255, 0.5);
+}
+.prop-material-select option {
+  background: #0d1525;
+}
+
 .props-empty {
   display: flex;
   align-items: center;
