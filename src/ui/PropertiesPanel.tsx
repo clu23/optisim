@@ -1,4 +1,5 @@
 import './ui.css'
+import { useState, useRef, useEffect } from 'react'
 import type { Scene, OpticalElement, LightSource } from '../core/types.ts'
 import { FlatMirror } from '../core/elements/flat-mirror.ts'
 import { ThinLens } from '../core/elements/thin-lens.ts'
@@ -23,37 +24,125 @@ interface Props {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Slider helper
+// DragNumber — drag horizontal · molette · double-clic pour saisir
 // ─────────────────────────────────────────────────────────────────────────────
 
-interface SliderProps {
+interface DragNumberProps {
   label: string
   value: number
   min: number
   max: number
+  /** Incrément de base : 1 px de drag = 1 step. */
   step: number
   unit?: string
   digits?: number
   onChange: (v: number) => void
 }
 
-function Slider({ label, value, min, max, step, unit = '', digits = 1, onChange }: SliderProps) {
+function DragNumber({ label, value, min, max, step, unit = '', digits = 1, onChange }: DragNumberProps) {
+  const [editing, setEditing]   = useState(false)
+  const [editText, setEditText] = useState('')
+  const [isDragging, setIsDragging] = useState(false)
+  const startRef = useRef<{ x: number; value: number } | null>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  function clamp(v: number) { return Math.max(min, Math.min(max, v)) }
+
+  // Arrondi au multiple de step le plus proche (évite la dérive float)
+  function snap(v: number) {
+    const inv = 1 / step
+    return Math.round(v * inv) / inv
+  }
+
+  // ── Pointer capture : drag horizontal ─────────────────────────────────────
+  function handlePointerDown(e: React.PointerEvent<HTMLSpanElement>) {
+    if (e.button !== 0) return
+    e.preventDefault()
+    e.stopPropagation()
+    e.currentTarget.setPointerCapture(e.pointerId)
+    startRef.current = { x: e.clientX, value }
+    setIsDragging(false)
+  }
+
+  function handlePointerMove(e: React.PointerEvent<HTMLSpanElement>) {
+    if (!startRef.current) return
+    e.preventDefault()
+    const dx = e.clientX - startRef.current.x
+    if (Math.abs(dx) > 2) setIsDragging(true)
+    onChange(clamp(snap(startRef.current.value + dx * step)))
+  }
+
+  function handlePointerUp(e: React.PointerEvent<HTMLSpanElement>) {
+    e.currentTarget.releasePointerCapture(e.pointerId)
+    startRef.current = null
+    setIsDragging(false)
+  }
+
+  // ── Molette : incrément fin ────────────────────────────────────────────────
+  function handleWheel(e: React.WheelEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+    onChange(clamp(snap(value + (e.deltaY < 0 ? step : -step))))
+  }
+
+  // ── Double-clic : saisie clavier ───────────────────────────────────────────
+  function startEditing() {
+    setEditText(value.toFixed(digits))
+    setEditing(true)
+  }
+
+  function commitEdit() {
+    const parsed = parseFloat(editText.replace(',', '.'))
+    if (!isNaN(parsed)) onChange(clamp(parsed))
+    setEditing(false)
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === 'Enter')  { e.preventDefault(); commitEdit() }
+    if (e.key === 'Escape') setEditing(false)
+  }
+
+  useEffect(() => {
+    if (editing && inputRef.current) {
+      inputRef.current.focus()
+      inputRef.current.select()
+    }
+  }, [editing])
+
   return (
     <div className="prop-row">
       <div className="prop-header">
         <span className="prop-label">{label}</span>
-        <span className="prop-value">{value.toFixed(digits)}{unit}</span>
+        {editing ? (
+          <input
+            ref={inputRef}
+            className="prop-edit-input"
+            value={editText}
+            onChange={e => setEditText(e.target.value)}
+            onBlur={commitEdit}
+            onKeyDown={handleKeyDown}
+            onClick={e => e.stopPropagation()}
+          />
+        ) : (
+          <span
+            className={`prop-value prop-drag${isDragging ? ' is-dragging' : ''}`}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onWheel={handleWheel}
+            onDoubleClick={startEditing}
+            title="Drag ← →  ·  Molette  ·  Double-clic pour saisir"
+          >
+            {value.toFixed(digits)}{unit}
+          </span>
+        )}
       </div>
-      <input
-        type="range"
-        className="prop-slider"
-        min={min} max={max} step={step}
-        value={value}
-        onChange={e => onChange(parseFloat(e.target.value))}
-      />
     </div>
   )
 }
+
+// Alias pour compatibilité avec les usages existants dans ce fichier
+const Slider = DragNumber
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Wavelength picker

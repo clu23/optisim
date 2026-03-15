@@ -127,11 +127,41 @@
   color: rgba(120, 210, 255, 0.9);
 }
 
-.prop-slider {
-  width: 100%;
-  height: 4px;
-  accent-color: #60c8ff;
-  cursor: pointer;
+/* Contrôle numérique draggable */
+.prop-drag {
+  cursor: ew-resize;
+  padding: 1px 5px;
+  border-radius: 3px;
+  border-bottom: 1px dashed rgba(96, 200, 255, 0.35);
+  user-select: none;
+  touch-action: none;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+.prop-drag:hover {
+  background: rgba(96, 200, 255, 0.1);
+  border-color: rgba(96, 200, 255, 0.65);
+  color: rgba(180, 235, 255, 1);
+}
+.prop-drag.is-dragging {
+  background: rgba(96, 200, 255, 0.18);
+  border-color: rgba(96, 200, 255, 0.85);
+  color: rgba(210, 245, 255, 1);
+  cursor: ew-resize;
+}
+
+/* Champ de saisie exacte (double-clic) */
+.prop-edit-input {
+  width: 80px;
+  background: rgba(15, 30, 65, 0.95);
+  border: 1px solid rgba(96, 200, 255, 0.7);
+  border-radius: 3px;
+  color: rgba(200, 240, 255, 0.95);
+  font-size: 11px;
+  font-family: monospace;
+  padding: 1px 5px;
+  outline: none;
+  text-align: right;
+  box-shadow: 0 0 6px rgba(96, 200, 255, 0.25);
 }
 
 .prop-checkbox-row {
