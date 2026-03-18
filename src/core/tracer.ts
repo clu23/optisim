@@ -90,7 +90,7 @@ export function traceRay(ray: Ray, scene: Scene): TraceResult {
       newDir = closestSurface.deflect(current.direction, closest.point)
       // currentN inchangé (air des deux côtés)
 
-    } else if (element.type === 'flat-mirror' || element.type === 'curved-mirror') {
+    } else if (element.type === 'flat-mirror' || element.type === 'curved-mirror' || element.type === 'conic-mirror') {
       // Miroir : réflexion spéculaire r⃗ = d⃗ − 2(d⃗·n⃗)n⃗
       newDir = reflect(current.direction, closest.normal)
       // currentN inchangé

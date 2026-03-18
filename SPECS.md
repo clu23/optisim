@@ -427,16 +427,16 @@ I(s) = I₀ × exp(-α × s)
 
 ### Phase 2 — Dispersion chromatique
 
-- [ ] Implémentation de la loi de Cauchy avec coefficients par matériau
-- [ ] Base de données de matériaux (BK7, SF11, eau, diamant, etc.)
-- [ ] Sources polychromatiques (spectre discret configurable)
-- [ ] Conversion longueur d'onde → RGB réaliste
-- [ ] Rendu des rayons par couleur spectrale avec glow
+- [x] Implémentation de la loi de Cauchy avec coefficients par matériau
+- [x] Base de données de matériaux (BK7, SF11, eau, diamant, etc.)
+- [x] Sources polychromatiques (spectre discret configurable)
+- [x] Conversion longueur d'onde → RGB réaliste
+- [x] Rendu des rayons par couleur spectrale avec glow
 
 **Validation :**
-- [ ] Test : dispersion par prisme — vérif angles pour rouge et bleu
-- [ ] Test : déviation minimale du prisme = f(n, A)
-- [ ] Test : aberration chromatique visible sur lentille simple
+- [x] Test : dispersion par prisme — vérif angles pour rouge et bleu
+- [x] Test : déviation minimale du prisme = f(n, A)
+- [x] Test : aberration chromatique visible sur lentille simple
 
 ### Phase 3 — Surfaces coniques et aberrations
 
