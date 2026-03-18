@@ -6,6 +6,7 @@ import { ThinLens } from '../core/elements/thin-lens.ts'
 import { Block } from '../core/elements/block.ts'
 import { Prism } from '../core/elements/prism.ts'
 import { CurvedMirror } from '../core/elements/curved-mirror.ts'
+import { ThickLens } from '../core/elements/thick-lens.ts'
 import { BeamSource } from '../core/sources/beam.ts'
 import { PointSource } from '../core/sources/point-source.ts'
 import { wavelengthToColor } from '../renderer/canvas-renderer.ts'
@@ -274,6 +275,39 @@ function PrismPanel({ el, onUpdate }: { el: Prism; onUpdate: () => void }) {
   </>
 }
 
+function ThickLensPanel({ el, onUpdate }: { el: ThickLens; onUpdate: () => void }) {
+  const f = el.paraxialFocalLength()
+  return <>
+    <Slider label="Angle axe" value={el.angle * RAD} min={-180} max={180} step={0.1} unit="°"
+      onChange={v => { el.angle = v * DEG; onUpdate() }} />
+    <Slider label="R1 (avant)" value={el.R1} min={20} max={800} step={1} unit=" px" digits={0}
+      onChange={v => { el.R1 = v; onUpdate() }} />
+    <Slider label="R2 (arrière)" value={el.R2} min={20} max={800} step={1} unit=" px" digits={0}
+      onChange={v => { el.R2 = v; onUpdate() }} />
+    <Slider label="κ1" value={el.kappa1} min={-3} max={2} step={0.05} digits={2}
+      onChange={v => { el.kappa1 = v; onUpdate() }} />
+    <Slider label="κ2" value={el.kappa2} min={-3} max={2} step={0.05} digits={2}
+      onChange={v => { el.kappa2 = v; onUpdate() }} />
+    <Slider label="Épaisseur" value={el.thickness} min={1} max={200} step={1} unit=" px" digits={0}
+      onChange={v => { el.thickness = v; onUpdate() }} />
+    <Slider label="Demi-ouverture" value={el.halfHeight} min={10} max={250} step={1} unit=" px" digits={0}
+      onChange={v => { el.halfHeight = v; onUpdate() }} />
+    <MaterialSelect value={el.material} onChange={v => { el.material = v; onUpdate() }} />
+    {!el.material && (
+      <Slider label="Indice n" value={el.n} min={1.0} max={2.5} step={0.01} digits={2}
+        onChange={v => { el.n = v; onUpdate() }} />
+    )}
+    <div className="prop-row">
+      <div className="prop-header">
+        <span className="prop-label">f paraxiale</span>
+        <span className="prop-value" style={{ color: '#60c8ff' }}>
+          {isFinite(f) ? `${f.toFixed(1)} px` : '∞'}
+        </span>
+      </div>
+    </div>
+  </>
+}
+
 function CurvedMirrorPanel({ el, onUpdate }: { el: CurvedMirror; onUpdate: () => void }) {
   return <>
     <Slider label="Angle axe" value={el.angle * RAD} min={-180} max={180} step={0.1} unit="°"
@@ -343,6 +377,7 @@ export function PropertiesPanel({ scene, selectedId, onUpdate, onDelete }: Props
     if (el instanceof Block)         return <BlockPanel         el={el}  onUpdate={onUpdate} />
     if (el instanceof Prism)         return <PrismPanel         el={el}  onUpdate={onUpdate} />
     if (el instanceof CurvedMirror)  return <CurvedMirrorPanel  el={el}  onUpdate={onUpdate} />
+    if (el instanceof ThickLens)    return <ThickLensPanel    el={el}  onUpdate={onUpdate} />
     return null
   }
 
@@ -356,7 +391,7 @@ export function PropertiesPanel({ scene, selectedId, onUpdate, onDelete }: Props
   if (!target) return null
 
   const typeLabel = element
-    ? ({ 'flat-mirror': 'Miroir plan', 'thin-lens': 'Lentille mince', 'block': 'Bloc', 'prism': 'Prisme', 'curved-mirror': 'Miroir courbe' }[element.type] ?? element.type)
+    ? ({ 'flat-mirror': 'Miroir plan', 'thin-lens': 'Lentille mince', 'block': 'Bloc', 'prism': 'Prisme', 'curved-mirror': 'Miroir courbe', 'thick-lens': 'Lentille épaisse' }[element.type] ?? element.type)
     : (source!.type === 'beam' ? 'Source faisceau' : 'Source ponctuelle')
 
   return (

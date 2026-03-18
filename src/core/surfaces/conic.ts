@@ -50,8 +50,14 @@ export interface ConicSurfaceParams {
    * Empêche les intersections hors du miroir physique.
    */
   halfHeight: number
-  /** Indice de réfraction (1 pour un miroir pur). */
+  /** Indice de réfraction fixe (1 pour un miroir pur, >1 pour une surface réfractante). */
   n?: number
+  /**
+   * Fonction d'indice dépendante de λ (Cauchy).
+   * Si fournie, prend la priorité sur `n`.
+   * Permet la dispersion chromatique sur les surfaces coniques réfractantes.
+   */
+  indexFn?: (wavelengthNm: number) => number
 }
 
 export class ConicSurface implements OpticalSurface {
@@ -62,6 +68,7 @@ export class ConicSurface implements OpticalSurface {
   readonly kappa: number
   readonly halfHeight: number
   private readonly _n: number
+  private readonly _indexFn: ((wl: number) => number) | undefined
 
   constructor(p: ConicSurfaceParams) {
     this.id         = p.id
@@ -71,6 +78,7 @@ export class ConicSurface implements OpticalSurface {
     this.kappa      = p.kappa
     this.halfHeight = p.halfHeight
     this._n         = p.n ?? 1
+    this._indexFn   = p.indexFn
   }
 
   // ── Transformations repère monde ↔ repère local ──────────────────────────
@@ -182,8 +190,16 @@ export class ConicSurface implements OpticalSurface {
       const fCheck = (1 + k) * xHit * xHit - 2 * R * xHit + yHit * yHit
       if (Math.abs(fCheck) > 1e-5 * R) continue
 
-      // La conique s'étend vers les x locaux positifs (côté concave)
+      // La conique s'étend vers les x locaux positifs (côté concave).
+      // On n'accepte que les intersections proches du sommet (0 ≤ x ≤ sagMax),
+      // ce qui rejette l'intersection symétrique sur la face opposée de la sphère/ellipse.
+      // sagMax = sag(halfHeight, R, κ) = h² / (R·(1 + √(1−(1+κ)h²/R²)))
       if (xHit < -1e-6) continue
+      const argMax = 1 - (1 + k) * (halfHeight * halfHeight) / (R * R)
+      const sagMax = argMax >= 0
+        ? (halfHeight * halfHeight) / (R * (1 + Math.sqrt(argMax)))
+        : halfHeight * halfHeight / R   // approximation sécurisée si κ>0 extrême
+      if (xHit > sagMax + 1) continue
 
       // Contrainte d'ouverture
       if (Math.abs(yHit) > halfHeight) continue
@@ -196,12 +212,14 @@ export class ConicSurface implements OpticalSurface {
       // Normale sortante (avant orientation) en repère monde
       const nWorld = normalize(this.toWorldDir({ x: nx_loc, y: ny_loc }))
 
-      // Surfaces miroir (n=1) : une seule face réfléchissante.
+      // Surfaces miroir (n=1, pas de indexFn) : une seule face réfléchissante.
       // Le rayon doit venir du côté concave → dot(d, n_sortant) > 0
       // (la normale sortante pointe VERS le rayon incident avant flip).
       // Cela rejette les rayons arrivant par l'arrière du miroir.
+      // Note : si indexFn est fourni, la surface est réfractante même si _n=1 par défaut.
       const dotOuter = ray.direction.x * nWorld.x + ray.direction.y * nWorld.y
-      if (this._n === 1 && dotOuter <= 0) continue
+      const isMirror = this._n === 1 && this._indexFn === undefined
+      if (isMirror && dotOuter <= 0) continue
 
       // Orienter vers le rayon incident : dot(d, n_final) < 0
       const flip = dotOuter > 0 ? -1 : 1
@@ -230,7 +248,7 @@ export class ConicSurface implements OpticalSurface {
     return normalize(this.toWorldDir({ x: nx, y: ny }))
   }
 
-  getRefractiveIndex(_wavelength: number): number {
-    return this._n
+  getRefractiveIndex(wavelength: number): number {
+    return this._indexFn ? this._indexFn(wavelength) : this._n
   }
 }

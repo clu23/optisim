@@ -5,6 +5,7 @@ import { ThinLens } from '../core/elements/thin-lens.ts'
 import { Block } from '../core/elements/block.ts'
 import { Prism } from '../core/elements/prism.ts'
 import { CurvedMirror } from '../core/elements/curved-mirror.ts'
+import { ThickLens, sagitta } from '../core/elements/thick-lens.ts'
 import { BeamSource } from '../core/sources/beam.ts'
 import { PointSource } from '../core/sources/point-source.ts'
 import { rotate } from '../core/vector.ts'
@@ -36,6 +37,7 @@ export function drawElement(
   else if (element instanceof Block)    drawBlock(ctx, element)
   else if (element instanceof Prism)    drawPrism(ctx, element)
   else if (element instanceof CurvedMirror) drawCurvedMirror(ctx, element, selected)
+  else if (element instanceof ThickLens)   drawThickLens(ctx, element, selected)
   ctx.restore()
 }
 
@@ -244,6 +246,88 @@ function drawCurvedMirror(ctx: CanvasRenderingContext2D, mirror: CurvedMirror, s
     const F = mirror.focalPoint()
     drawFocalCross(ctx, F, 'F', MIRROR_COLOR)
     drawFocalCross(ctx, C, 'C', 'rgba(190, 190, 255, 0.85)')
+  }
+}
+
+function drawThickLens(ctx: CanvasRenderingContext2D, lens: ThickLens, selected: boolean): void {
+  const ax    = lens.axisDirection()
+  const perp: Vec2 = { x: -ax.y, y: ax.x }
+  const STEPS = 40  // points par surface
+
+  const cx = lens.position.x
+  const cy = lens.position.y
+  const h  = lens.halfHeight
+  const t  = lens.thickness / 2
+
+  // ── Construction du contour ──────────────────────────────────────────────
+  // 4 segments : S1 (haut→bas), bord bas, S2 (bas→haut), bord haut
+
+  function ptS1(y: number): Vec2 {
+    // Face avant : vertex à −t·ax, sag vers +ax
+    const sag = sagitta(Math.abs(y), lens.R1, lens.kappa1)
+    return {
+      x: cx + (-t + sag) * ax.x + y * perp.x,
+      y: cy + (-t + sag) * ax.y + y * perp.y,
+    }
+  }
+
+  function ptS2(y: number): Vec2 {
+    // Face arrière : vertex à +t·ax, sag vers −ax
+    const sag = sagitta(Math.abs(y), lens.R2, lens.kappa2)
+    return {
+      x: cx + (t - sag) * ax.x + y * perp.x,
+      y: cy + (t - sag) * ax.y + y * perp.y,
+    }
+  }
+
+  // Axe optique
+  drawOpticalAxis(ctx, lens.position, ax, 320)
+
+  // Contour de la lentille
+  ctx.beginPath()
+
+  // S1 : de +h à −h
+  for (let i = 0; i <= STEPS; i++) {
+    const y  = h - (2 * h * i) / STEPS
+    const pt = ptS1(y)
+    if (i === 0) ctx.moveTo(pt.x, pt.y); else ctx.lineTo(pt.x, pt.y)
+  }
+  // Bord bas : de S1 bas à S2 bas
+  ctx.lineTo(ptS2(-h).x, ptS2(-h).y)
+  // S2 : de −h à +h
+  for (let i = 0; i <= STEPS; i++) {
+    const y  = -h + (2 * h * i) / STEPS
+    ctx.lineTo(ptS2(y).x, ptS2(y).y)
+  }
+  // Bord haut : de S2 haut à S1 haut (fermeture automatique)
+  ctx.closePath()
+
+  ctx.fillStyle = GLASS_FILL
+  ctx.strokeStyle = GLASS_STROKE
+  ctx.lineWidth = 1.5
+  ctx.shadowColor = GLASS_STROKE
+  ctx.shadowBlur = 6
+  ctx.fill()
+  ctx.stroke()
+
+  // Label f paraxiale
+  ctx.shadowBlur = 0
+  ctx.fillStyle = 'rgba(120, 200, 255, 0.6)'
+  ctx.font = '11px monospace'
+  ctx.textAlign = 'center'
+  const matLabel = lens.material ? MATERIALS[lens.material].label : `n=${lens.n.toFixed(2)}`
+  ctx.fillText(matLabel, cx, cy + 4)
+  ctx.textAlign = 'left'
+
+  // Foyers à la sélection
+  if (selected) {
+    const f   = lens.paraxialFocalLength()
+    if (isFinite(f)) {
+      const Fp: Vec2 = { x: cx + f * ax.x, y: cy + f * ax.y }
+      const F:  Vec2 = { x: cx - f * ax.x, y: cy - f * ax.y }
+      drawFocalCross(ctx, Fp, "F'", LENS_COLOR)
+      drawFocalCross(ctx, F,  'F',  LENS_COLOR)
+    }
   }
 }
 
