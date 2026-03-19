@@ -314,18 +314,25 @@ function GRINMediumPanel({ el, onUpdate }: { el: GRINElement; onUpdate: () => vo
   // Paramètres de l'alpha selon le profil
   type AlphaCfg = { label: string; min: number; max: number; step: number; digits: number }
   const alphaCfg: Record<GRINProfile, AlphaCfg> = {
-    linear:      { label: 'α (Δn/px)',  min: -0.003, max: 0.003, step: 0.00005, digits: 5 },
+    linear:      { label: 'α (∂n/∂y)',  min: -0.003, max: 0.003, step: 0.00005, digits: 5 },
     parabolic:   { label: 'α (px⁻¹)',   min:  0.001, max: 0.05,  step: 0.001,   digits: 3 },
     exponential: { label: 'H (px)',      min:  10,    max: 500,   step: 1,       digits: 0 },
+    custom:      { label: 'αy (∂n/∂y)', min: -0.003, max: 0.003, step: 0.00005, digits: 5 },
   }
   const ac = alphaCfg[el.profile]
 
-  // Indice min/max dans le milieu (info)
-  const nCenter = el.indexAt({ x: el.position.x + el.width / 2, y: el.position.y + el.height / 2 })
-  const nTop    = el.indexAt({ x: el.position.x + el.width / 2, y: el.position.y })
-  const nBot    = el.indexAt({ x: el.position.x + el.width / 2, y: el.position.y + el.height })
-  const nMin    = Math.min(nCenter, nTop, nBot)
-  const nMax    = Math.max(nCenter, nTop, nBot)
+  // Indice min/max dans le milieu (info) — on échantillonne les 4 coins + centre
+  const cx = el.position.x + el.width / 2
+  const cy = el.position.y + el.height / 2
+  const samples = [
+    el.indexAt({ x: cx,               y: cy               }),
+    el.indexAt({ x: el.position.x,    y: el.position.y    }),
+    el.indexAt({ x: el.position.x + el.width, y: el.position.y }),
+    el.indexAt({ x: el.position.x,    y: el.position.y + el.height }),
+    el.indexAt({ x: el.position.x + el.width, y: el.position.y + el.height }),
+  ]
+  const nMin = Math.min(...samples)
+  const nMax = Math.max(...samples)
 
   return <>
     {/* Sélecteur de profil */}
@@ -340,6 +347,7 @@ function GRINMediumPanel({ el, onUpdate }: { el: GRINElement; onUpdate: () => vo
           <option value="linear">Linéaire  n(y)=n₀+αy</option>
           <option value="parabolic">Parabolique  n(r)=n₀(1−α²r²/2)</option>
           <option value="exponential">Exponentiel  n(h)=1+(n₀−1)e^(−h/H)</option>
+          <option value="custom">Custom  n(x,y)=n₀+αy·y+αx·x</option>
         </select>
       </div>
     </div>
@@ -347,6 +355,11 @@ function GRINMediumPanel({ el, onUpdate }: { el: GRINElement; onUpdate: () => vo
       onChange={v => { el.n0 = v; onUpdate() }} />
     <Slider label={ac.label} value={el.alpha} min={ac.min} max={ac.max} step={ac.step} digits={ac.digits}
       onChange={v => { el.alpha = v; onUpdate() }} />
+    {/* Gradient horizontal αx — uniquement pour le profil custom */}
+    {el.profile === 'custom' && (
+      <Slider label="αx (∂n/∂x)" value={el.alpha2} min={-0.003} max={0.003} step={0.00005} digits={5}
+        onChange={v => { el.alpha2 = v; onUpdate() }} />
+    )}
     <Slider label="Largeur" value={el.width} min={50} max={900} step={1} unit=" px" digits={0}
       onChange={v => { el.width = v; onUpdate() }} />
     <Slider label="Hauteur" value={el.height} min={50} max={700} step={1} unit=" px" digits={0}

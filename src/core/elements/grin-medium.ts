@@ -20,23 +20,30 @@ import type { Vec2, OpticalElement, OpticalSurface, BoundingBox, GRINMedium } fr
 // Le traceur GRIN n'intègre que les segments à l'intérieur.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type GRINProfile = 'linear' | 'parabolic' | 'exponential'
+export type GRINProfile = 'linear' | 'parabolic' | 'exponential' | 'custom'
 
 export interface GRINMediumParams {
   id: string
-  position: Vec2       // coin bas-gauche du rectangle
+  position: Vec2       // coin haut-gauche du rectangle
   width: number        // largeur (axe x)
   height: number       // hauteur (axe y)
   profile: GRINProfile
-  /** Indice de base (au centre / à y=0). */
+  /** Indice de base (au centre). */
   n0: number
   /**
-   * Coefficient de gradient :
-   *   linear      : Δn par pixel (peut être négatif)
+   * Coefficient de gradient principal :
+   *   linear      : ∂n/∂y  (Δn par pixel, peut être négatif)
    *   parabolic   : α en px⁻¹  (n(r)=n0(1−α²r²/2), α>0)
    *   exponential : H en pixels (hauteur de scale)
+   *   custom      : ∂n/∂y  (composante verticale du gradient)
    */
   alpha: number
+  /**
+   * Coefficient de gradient secondaire (profil 'custom' uniquement).
+   *   custom : ∂n/∂x  (composante horizontale du gradient)
+   * Non utilisé par les autres profils.
+   */
+  alpha2?: number
   label?: string
   angle?: number  // toujours 0 pour GRIN (pas de rotation de la boîte)
 }
@@ -56,6 +63,8 @@ export class GRINElement implements OpticalElement, GRINMedium {
   profile: GRINProfile
   n0: number
   alpha: number
+  /** Gradient horizontal ∂n/∂x (profil 'custom' uniquement). */
+  alpha2: number
 
   constructor(p: GRINMediumParams) {
     this.id       = p.id
@@ -67,6 +76,7 @@ export class GRINElement implements OpticalElement, GRINMedium {
     this.profile  = p.profile
     this.n0       = p.n0
     this.alpha    = p.alpha
+    this.alpha2   = p.alpha2 ?? 0
   }
 
   // ── GRINMedium ─────────────────────────────────────────────────────────────
@@ -116,23 +126,27 @@ export class GRINElement implements OpticalElement, GRINMedium {
   private _n(pos: Vec2): number {
     switch (this.profile) {
       case 'linear': {
-        // n(y) = n0 + α·y_local
-        // y_local = y − centre_y du milieu
+        // n(y) = n0 + α·y_local,  y_local = y − centre_y
         const cy = this.position.y + this.height / 2
         return this.n0 + this.alpha * (pos.y - cy)
       }
       case 'parabolic': {
-        // n(r) = n0·(1 − α²r²/2)
-        // r = distance à l'axe optique = |y_local| (axe x passant par le centre)
+        // n(r) = n0·(1 − α²r²/2),  r = y_local (axe x = axe optique)
         const cy = this.position.y + this.height / 2
-        const r  = pos.y - cy   // coordonnée signée (r² est ce qui compte)
+        const r  = pos.y - cy
         return this.n0 * (1 - 0.5 * this.alpha * this.alpha * r * r)
       }
       case 'exponential': {
-        // n(h) = 1 + (n0−1)·exp(−h/H)
-        // h = altitude = y − bas du domaine (y_min = position.y)
+        // n(h) = 1 + (n0−1)·exp(−h/H),  h = y − y_min
         const h = pos.y - this.position.y
         return 1 + (this.n0 - 1) * Math.exp(-h / this.alpha)
+      }
+      case 'custom': {
+        // Gradient 2D linéaire libre : n(x,y) = n0 + α·(y−cy) + α2·(x−cx)
+        // Permet de simuler un gradient dans n'importe quelle direction.
+        const cx = this.position.x + this.width  / 2
+        const cy = this.position.y + this.height / 2
+        return this.n0 + this.alpha * (pos.y - cy) + this.alpha2 * (pos.x - cx)
       }
     }
   }

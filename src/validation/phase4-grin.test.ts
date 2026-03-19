@@ -235,6 +235,150 @@ describe('V7 — Fibre GRIN parabolique → trajectoire sinusoïdale', () => {
 // Tests annexes : profil exponentiel + conservation OPL
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────────
+// V — Conservation du chemin optique OPL = ∫n·ds
+//
+// Cas analytiques vérifiables :
+//   1. Milieu uniforme (α=0) : OPL = n₀ × W  (trajectoire droite)
+//   2. Gradient linéaire, traversée verticale symétrique :
+//        OPL = ∫₀ᴴ [n₀ + α·(y−H/2)] dy = n₀·H  (termes en α s'annulent)
+//   3. Profil parabolique sur l'axe (r=0) : n(0)=n₀ partout → OPL = n₀·W
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('V — Conservation du chemin optique (OPL = ∫n·ds)', () => {
+  it('milieu uniforme (α=0) : OPL = n₀ × largeur à ±1%', () => {
+    const W = 300, H = 200, n0 = 1.5
+    const medium = new GRINElement({
+      id: 'opl-uniform',
+      position: { x: 0, y: 0 },
+      width: W, height: H,
+      profile: 'linear', n0, alpha: 0,   // α=0 → milieu homogène
+    })
+    // dsMax=1 → erreur d'overshoot ≈ 1/300 < 0.4%
+    const result = integrateGRIN(
+      { x: 0, y: H / 2 },  // rayon horizontal centré
+      { x: 1, y: 0 },
+      medium, 555,
+      { dsMax: 1, dsMin: 0.1, maxSteps: 100_000 },
+    )
+    const relErr = Math.abs(result.opticalPath - n0 * W) / (n0 * W)
+    expect(relErr).toBeLessThan(0.01)
+  })
+
+  it('gradient linéaire symétrique : OPL = n₀ × H à ±0.5%', () => {
+    // Traversée verticale complète d'un gradient n(y) = n₀ + α·(y − H/2)
+    // OPL = ∫₀ᴴ [n₀ + α·(y−H/2)] dy = n₀·H  (symétrie : termes en α → 0)
+    const W = 200, H = 400, n0 = 1.5, alpha = 0.001
+    const medium = new GRINElement({
+      id: 'opl-linear',
+      position: { x: 0, y: 0 },
+      width: W, height: H,
+      profile: 'linear', n0, alpha,
+    })
+    // Rayon vertical (direction +y) : pas de force horizontale → trajectoire droite
+    const result = integrateGRIN(
+      { x: W / 2, y: 0 },   // entrée en haut
+      { x: 0, y: 1 },        // direction vers le bas
+      medium, 555,
+      { dsMax: 2, dsMin: 0.05, maxSteps: 100_000 },
+    )
+    const OPL_analytic = n0 * H
+    const relErr = Math.abs(result.opticalPath - OPL_analytic) / OPL_analytic
+    expect(relErr).toBeLessThan(0.01)
+  })
+
+  it('profil parabolique axial : OPL = n₀ × W à ±1%', () => {
+    // Sur l'axe (r=0), n(r=0) = n₀ partout → trajectoire droite → OPL = n₀·W
+    const W = 400, H = 300, n0 = 1.5, alpha = 0.015
+    const medium = new GRINElement({
+      id: 'opl-parabolic',
+      position: { x: 0, y: 0 },
+      width: W, height: H,
+      profile: 'parabolic', n0, alpha,
+    })
+    // dsMax=1 → erreur d'overshoot ≈ 1/400 < 0.3%
+    const result = integrateGRIN(
+      { x: 0, y: H / 2 },   // sur l'axe optique
+      { x: 1, y: 0 },
+      medium, 555,
+      { dsMax: 1, dsMin: 0.1, maxSteps: 100_000 },
+    )
+    const OPL_analytic = n0 * W
+    const relErr = Math.abs(result.opticalPath - OPL_analytic) / OPL_analytic
+    expect(relErr).toBeLessThan(0.01)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tests du profil custom
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('GRINElement — profil custom (gradient 2D libre)', () => {
+  it('gradient purement vertical (α2=0) : identique au profil linéaire', () => {
+    const W = 300, H = 300, n0 = 1.5, alpha = 0.001
+    const custom = new GRINElement({
+      id: 'custom-vert', position: { x: 0, y: 0 }, width: W, height: H,
+      profile: 'custom', n0, alpha, alpha2: 0,
+    })
+    const linear = new GRINElement({
+      id: 'linear-ref', position: { x: 0, y: 0 }, width: W, height: H,
+      profile: 'linear', n0, alpha,
+    })
+    // Mêmes valeurs partout
+    const pts = [
+      { x: 50, y: 100 }, { x: 150, y: 150 }, { x: 200, y: 250 },
+    ]
+    for (const p of pts) {
+      expect(Math.abs(custom.indexAt(p) - linear.indexAt(p))).toBeLessThan(1e-10)
+    }
+  })
+
+  it('gradient purement horizontal (α=0, α2≠0) : n varie le long de x', () => {
+    const W = 400, H = 200, n0 = 1.5, alpha2 = 0.001
+    const medium = new GRINElement({
+      id: 'custom-horiz', position: { x: 0, y: 0 }, width: W, height: H,
+      profile: 'custom', n0, alpha: 0, alpha2,
+    })
+    const cx = W / 2
+    // Sur l'axe y=cy : n(x) = n0 + α2·(x−cx)
+    const nLeft   = medium.indexAt({ x: 0,   y: H / 2 })
+    const nCenter = medium.indexAt({ x: cx,  y: H / 2 })
+    const nRight  = medium.indexAt({ x: W,   y: H / 2 })
+    expect(Math.abs(nCenter - n0)).toBeLessThan(1e-10)
+    expect(Math.abs(nLeft  - (n0 - alpha2 * cx))).toBeLessThan(1e-10)
+    expect(Math.abs(nRight - (n0 + alpha2 * cx))).toBeLessThan(1e-10)
+  })
+
+  it('gradient diagonal : n(x,y) = n0 + αy·y + αx·x avec les deux composantes', () => {
+    const W = 300, H = 300, n0 = 1.5, alpha = 0.001, alpha2 = 0.0005
+    const medium = new GRINElement({
+      id: 'custom-diag', position: { x: 0, y: 0 }, width: W, height: H,
+      profile: 'custom', n0, alpha, alpha2,
+    })
+    const cx = W / 2, cy = H / 2
+    const pos = { x: cx + 50, y: cy + 30 }
+    const expected = n0 + alpha * 30 + alpha2 * 50
+    expect(Math.abs(medium.indexAt(pos) - expected)).toBeLessThan(1e-10)
+  })
+
+  it('gradient horizontal courbe le rayon vertical dans la bonne direction', () => {
+    // α2 > 0 → n croît vers +x → un rayon vertical (direction +y) reçoit une force vers +x
+    const W = 300, H = 300, n0 = 1.5, alpha2 = 0.0005
+    const medium = new GRINElement({
+      id: 'custom-curv', position: { x: 0, y: 0 }, width: W, height: H,
+      profile: 'custom', n0, alpha: 0, alpha2,
+    })
+    // Rayon entrant à gauche du centre (x < cx) en direction +y
+    const entry = { x: W / 2 - 10, y: 0 }
+    const result = integrateGRIN(entry, { x: 0, y: 1 }, medium, 555, {
+      dsMax: 2, dsMin: 0.05, maxSteps: 100_000,
+    })
+    // Avec α2 > 0, gradient pointe vers +x → rayon dévié vers +x
+    const pts = result.points
+    expect(pts[pts.length - 1].x).toBeGreaterThan(entry.x)
+  })
+})
+
 describe('GRINElement — profil exponentiel', () => {
   it('n(h=0) = n0, décroît vers n=1 pour h grand', () => {
     const medium = new GRINElement({

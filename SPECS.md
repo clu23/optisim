@@ -453,16 +453,16 @@ I(s) = I₀ × exp(-α × s)
 
 ### Phase 4 — Milieux GRIN et tracé courbe
 
-- [ ] Intégrateur RK4 pour l'équation de l'eikonale
-- [ ] Pas adaptatif (Δs proportionnel à 1/|∇n|)
-- [ ] Profils d'indice : linéaire, parabolique, exponentiel, custom
-- [ ] Rendu des trajectoires courbes (polylignes lissées)
-- [ ] Éléments : fibre GRIN, atmosphère (mirage)
+- [x] Intégrateur RK4 pour l'équation de l'eikonale
+- [x] Pas adaptatif (Δs proportionnel à 1/|∇n|)
+- [x] Profils d'indice : linéaire, parabolique, exponentiel, custom (gradient 2D αx+αy)
+- [x] Rendu des trajectoires courbes (polylignes lissées)
+- [x] Éléments : fibre GRIN, atmosphère (mirage)
 
 **Validation :**
-- [ ] Test : gradient linéaire — trajectoire parabolique (solution analytique)
-- [ ] Test : fibre GRIN parabolique — trajectoire sinusoïdale
-- [ ] Test : conservation du chemin optique dans un gradient
+- [x] Test : gradient linéaire — trajectoire parabolique (solution analytique)
+- [x] Test : fibre GRIN parabolique — trajectoire sinusoïdale
+- [x] Test : conservation du chemin optique dans un gradient
 
 ### Phase 5 — Fresnel et énergie
 
