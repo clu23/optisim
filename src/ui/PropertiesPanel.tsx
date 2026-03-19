@@ -8,6 +8,7 @@ import { Prism } from '../core/elements/prism.ts'
 import { CurvedMirror } from '../core/elements/curved-mirror.ts'
 import { ThickLens } from '../core/elements/thick-lens.ts'
 import { ConicMirror } from '../core/elements/conic-mirror.ts'
+import { GRINElement, type GRINProfile } from '../core/elements/grin-medium.ts'
 import { BeamSource } from '../core/sources/beam.ts'
 import { PointSource } from '../core/sources/point-source.ts'
 import { wavelengthToColor } from '../renderer/canvas-renderer.ts'
@@ -309,6 +310,59 @@ function ThickLensPanel({ el, onUpdate }: { el: ThickLens; onUpdate: () => void 
   </>
 }
 
+function GRINMediumPanel({ el, onUpdate }: { el: GRINElement; onUpdate: () => void }) {
+  // Paramètres de l'alpha selon le profil
+  type AlphaCfg = { label: string; min: number; max: number; step: number; digits: number }
+  const alphaCfg: Record<GRINProfile, AlphaCfg> = {
+    linear:      { label: 'α (Δn/px)',  min: -0.003, max: 0.003, step: 0.00005, digits: 5 },
+    parabolic:   { label: 'α (px⁻¹)',   min:  0.001, max: 0.05,  step: 0.001,   digits: 3 },
+    exponential: { label: 'H (px)',      min:  10,    max: 500,   step: 1,       digits: 0 },
+  }
+  const ac = alphaCfg[el.profile]
+
+  // Indice min/max dans le milieu (info)
+  const nCenter = el.indexAt({ x: el.position.x + el.width / 2, y: el.position.y + el.height / 2 })
+  const nTop    = el.indexAt({ x: el.position.x + el.width / 2, y: el.position.y })
+  const nBot    = el.indexAt({ x: el.position.x + el.width / 2, y: el.position.y + el.height })
+  const nMin    = Math.min(nCenter, nTop, nBot)
+  const nMax    = Math.max(nCenter, nTop, nBot)
+
+  return <>
+    {/* Sélecteur de profil */}
+    <div className="prop-row">
+      <div className="prop-header">
+        <span className="prop-label">Profil</span>
+        <select
+          className="prop-material-select"
+          value={el.profile}
+          onChange={e => { el.profile = e.target.value as GRINProfile; onUpdate() }}
+        >
+          <option value="linear">Linéaire  n(y)=n₀+αy</option>
+          <option value="parabolic">Parabolique  n(r)=n₀(1−α²r²/2)</option>
+          <option value="exponential">Exponentiel  n(h)=1+(n₀−1)e^(−h/H)</option>
+        </select>
+      </div>
+    </div>
+    <Slider label="n₀" value={el.n0} min={1.0} max={2.5} step={0.005} digits={3}
+      onChange={v => { el.n0 = v; onUpdate() }} />
+    <Slider label={ac.label} value={el.alpha} min={ac.min} max={ac.max} step={ac.step} digits={ac.digits}
+      onChange={v => { el.alpha = v; onUpdate() }} />
+    <Slider label="Largeur" value={el.width} min={50} max={900} step={1} unit=" px" digits={0}
+      onChange={v => { el.width = v; onUpdate() }} />
+    <Slider label="Hauteur" value={el.height} min={50} max={700} step={1} unit=" px" digits={0}
+      onChange={v => { el.height = v; onUpdate() }} />
+    {/* Plage d'indice */}
+    <div className="prop-row">
+      <div className="prop-header">
+        <span className="prop-label">n min / max</span>
+        <span className="prop-value" style={{ color: '#3cd8b8' }}>
+          {nMin.toFixed(3)} – {nMax.toFixed(3)}
+        </span>
+      </div>
+    </div>
+  </>
+}
+
 function ConicMirrorPanel({ el, onUpdate }: { el: ConicMirror; onUpdate: () => void }) {
   function kappaLabel(k: number): string {
     if (Math.abs(k) < 0.02)       return 'Sphère (κ=0)'
@@ -412,6 +466,7 @@ export function PropertiesPanel({ scene, selectedId, onUpdate, onDelete }: Props
     if (el instanceof CurvedMirror)  return <CurvedMirrorPanel  el={el}  onUpdate={onUpdate} />
     if (el instanceof ThickLens)    return <ThickLensPanel     el={el}  onUpdate={onUpdate} />
     if (el instanceof ConicMirror)  return <ConicMirrorPanel   el={el}  onUpdate={onUpdate} />
+    if (el instanceof GRINElement)  return <GRINMediumPanel    el={el}  onUpdate={onUpdate} />
     return null
   }
 
@@ -425,7 +480,7 @@ export function PropertiesPanel({ scene, selectedId, onUpdate, onDelete }: Props
   if (!target) return null
 
   const typeLabel = element
-    ? ({ 'flat-mirror': 'Miroir plan', 'thin-lens': 'Lentille mince', 'block': 'Bloc', 'prism': 'Prisme', 'curved-mirror': 'Miroir courbe', 'thick-lens': 'Lentille épaisse', 'conic-mirror': 'Miroir conique' }[element.type] ?? element.type)
+    ? ({ 'flat-mirror': 'Miroir plan', 'thin-lens': 'Lentille mince', 'block': 'Bloc', 'prism': 'Prisme', 'curved-mirror': 'Miroir courbe', 'thick-lens': 'Lentille épaisse', 'conic-mirror': 'Miroir conique', 'grin': 'Milieu GRIN' }[element.type] ?? element.type)
     : (source!.type === 'beam' ? 'Source faisceau' : 'Source ponctuelle')
 
   return (

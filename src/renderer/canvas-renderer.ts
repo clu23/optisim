@@ -1,5 +1,5 @@
 import type { Scene, TraceResult } from '../core/types.ts'
-import { drawElement, drawSource } from './element-renderer.ts'
+import { drawElement, drawSource, isGRINElement } from './element-renderer.ts'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ViewTransform — transformation de vue (zoom + pan)
@@ -172,15 +172,20 @@ export function drawScene(
   // 1. Grille
   drawGrid(ctx, worldBounds.left, worldBounds.top, worldBounds.right, worldBounds.bottom, scale)
 
-  // 2. Rayons (sous les éléments — visibles par transparence du verre)
-  drawRays(ctx, results, scale)
-
-  // 3. Éléments optiques
+  // 2. Milieux GRIN en fond (avant les rayons pour que les trajectoires soient visibles par-dessus)
   for (const element of scene.elements) {
-    drawElement(ctx, element, element.id === selectedId)
+    if (isGRINElement(element)) drawElement(ctx, element, element.id === selectedId)
   }
 
-  // 4. Sources
+  // 3. Rayons (sur les GRIN, sous les éléments optiques)
+  drawRays(ctx, results, scale)
+
+  // 4. Éléments optiques (hors GRIN)
+  for (const element of scene.elements) {
+    if (!isGRINElement(element)) drawElement(ctx, element, element.id === selectedId)
+  }
+
+  // 5. Sources
   for (const source of scene.sources) {
     drawSource(ctx, source, source.id === selectedId)
   }

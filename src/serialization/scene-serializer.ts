@@ -7,6 +7,7 @@ import { Prism } from '../core/elements/prism.ts'
 import { CurvedMirror } from '../core/elements/curved-mirror.ts'
 import { ThickLens } from '../core/elements/thick-lens.ts'
 import { ConicMirror } from '../core/elements/conic-mirror.ts'
+import { GRINElement, type GRINProfile } from '../core/elements/grin-medium.ts'
 import { BeamSource } from '../core/sources/beam.ts'
 import { PointSource } from '../core/sources/point-source.ts'
 
@@ -31,6 +32,7 @@ type ElementJSON =
   | { type: 'curved-mirror';  id: string; label: string; position: { x: number; y: number }; angle: number; radius: number; aperture: number; concave: boolean }
   | { type: 'thick-lens';    id: string; label: string; position: { x: number; y: number }; angle: number; R1: number; R2: number; kappa1: number; kappa2: number; thickness: number; halfHeight: number; n: number; material?: MaterialId }
   | { type: 'conic-mirror'; id: string; label: string; position: { x: number; y: number }; angle: number; R: number; kappa: number; halfHeight: number }
+  | { type: 'grin'; id: string; label: string; position: { x: number; y: number }; angle: number; width: number; height: number; profile: GRINProfile; n0: number; alpha: number }
 
 type SourceJSON =
   | { type: 'beam';  id: string; position: { x: number; y: number }; angle: number; wavelengths: number[]; numRays: number; width: number }
@@ -62,6 +64,9 @@ export function serializeScene(scene: Scene): SceneJSON {
     }
     if (el instanceof ConicMirror) {
       return { type: 'conic-mirror', id: el.id, label: el.label, position: el.position, angle: el.angle, R: el.R, kappa: el.kappa, halfHeight: el.halfHeight }
+    }
+    if (el instanceof GRINElement) {
+      return { type: 'grin', id: el.id, label: el.label, position: el.position, angle: el.angle, width: el.width, height: el.height, profile: el.profile, n0: el.n0, alpha: el.alpha }
     }
     throw new Error(`serializeScene: type d'élément inconnu "${el.type}"`)
   })
@@ -97,6 +102,7 @@ export function deserializeScene(json: SceneJSON): Scene {
       case 'curved-mirror': return new CurvedMirror(el)
       case 'thick-lens':    return new ThickLens(el)
       case 'conic-mirror':  return new ConicMirror(el)
+      case 'grin':          return new GRINElement(el)
       default: throw new Error(`deserializeScene: type d'élément inconnu "${(el as { type: string }).type}"`)
     }
   })

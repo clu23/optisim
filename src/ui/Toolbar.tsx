@@ -7,6 +7,7 @@ import { Prism } from '../core/elements/prism.ts'
 import { CurvedMirror } from '../core/elements/curved-mirror.ts'
 import { ThickLens } from '../core/elements/thick-lens.ts'
 import { ConicMirror } from '../core/elements/conic-mirror.ts'
+import { GRINElement } from '../core/elements/grin-medium.ts'
 import { BeamSource } from '../core/sources/beam.ts'
 import { PointSource } from '../core/sources/point-source.ts'
 import { PRESETS } from './presets.ts'
@@ -86,6 +87,18 @@ export function Toolbar({ canvasW, canvasH, onSceneRef, onAddToScene, onLoadPres
     })
   }
 
+  function addGRIN() {
+    add(scene => {
+      const id = uid('grin')
+      scene.elements.push(new GRINElement({
+        id, position: { x: cx - 150, y: cy - 100 },
+        width: 300, height: 200,
+        profile: 'parabolic', n0: 1.5, alpha: 0.015,
+      }))
+      return id
+    })
+  }
+
   function addBlock() {
     add(scene => {
       const id = uid('block')
@@ -134,6 +147,7 @@ export function Toolbar({ canvasW, canvasH, onSceneRef, onAddToScene, onLoadPres
       <button className="toolbar-btn" onClick={addThickLens} title="Lentille épaisse">⊙ Épaisse</button>
       <button className="toolbar-btn" onClick={addPrism} title="Prisme">△ Prisme</button>
       <button className="toolbar-btn" onClick={addBlock} title="Bloc réfractant">▭ Bloc</button>
+      <button className="toolbar-btn" onClick={addGRIN} title="Milieu GRIN (gradient d'indice)">⬡ GRIN</button>
 
       <div className="toolbar-sep" />
 

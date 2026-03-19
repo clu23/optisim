@@ -7,6 +7,7 @@ import { Prism } from '../core/elements/prism.ts'
 import { CurvedMirror } from '../core/elements/curved-mirror.ts'
 import { ThickLens, sagitta } from '../core/elements/thick-lens.ts'
 import { ConicMirror } from '../core/elements/conic-mirror.ts'
+import { GRINElement } from '../core/elements/grin-medium.ts'
 import { BeamSource } from '../core/sources/beam.ts'
 import { PointSource } from '../core/sources/point-source.ts'
 import { rotate } from '../core/vector.ts'
@@ -40,6 +41,7 @@ export function drawElement(
   else if (element instanceof CurvedMirror) drawCurvedMirror(ctx, element, selected)
   else if (element instanceof ThickLens)   drawThickLens(ctx, element, selected)
   else if (element instanceof ConicMirror) drawConicMirror(ctx, element, selected)
+  else if (element instanceof GRINElement) drawGRINMedium(ctx, element, selected)
   ctx.restore()
 }
 
@@ -384,6 +386,74 @@ function drawThickLens(ctx: CanvasRenderingContext2D, lens: ThickLens, selected:
       drawFocalCross(ctx, F,  'F',  LENS_COLOR)
     }
   }
+}
+
+function drawGRINMedium(ctx: CanvasRenderingContext2D, el: GRINElement, selected: boolean): void {
+  const { position: pos, width, height } = el
+  const cx = pos.x + width / 2
+  const cy = pos.y + height / 2
+
+  // ── Gradient de couleur représentant le gradient d'indice ─────────────────
+  // On échantillonne n sur l'axe y pour créer un dégradé CSS fidèle au profil.
+  const STOPS = 10
+  const nSamples: number[] = []
+  for (let i = 0; i <= STOPS; i++) {
+    nSamples.push(el.indexAt({ x: cx, y: pos.y + (height * i) / STOPS }))
+  }
+  const nMin = Math.min(...nSamples)
+  const nMax = Math.max(...nSamples)
+  const nRange = Math.max(nMax - nMin, 1e-9)
+
+  const grad = ctx.createLinearGradient(cx, pos.y, cx, pos.y + height)
+  for (let i = 0; i <= STOPS; i++) {
+    const t = i / STOPS
+    const intensity = (nSamples[i] - nMin) / nRange   // 0 = faible n, 1 = fort n
+    // Teinte cyan-teal, opacité proportionnelle à l'indice local
+    grad.addColorStop(t, `rgba(60, 210, 180, ${(0.06 + 0.24 * intensity).toFixed(3)})`)
+  }
+
+  ctx.fillStyle = grad
+  ctx.strokeStyle = selected ? 'rgba(60, 220, 190, 0.9)' : 'rgba(60, 210, 180, 0.55)'
+  ctx.lineWidth = selected ? 2 : 1.5
+  if (selected) { ctx.shadowColor = 'rgba(60, 220, 190, 0.5)'; ctx.shadowBlur = 10 }
+  ctx.beginPath()
+  ctx.rect(pos.x, pos.y, width, height)
+  ctx.fill()
+  ctx.stroke()
+  ctx.shadowBlur = 0
+
+  // ── Étiquette profil + n₀ ─────────────────────────────────────────────────
+  const profileLabel: Record<string, string> = { linear: 'GRIN linéaire', parabolic: 'Fibre GRIN', exponential: 'Atmosphère' }
+  ctx.fillStyle = 'rgba(60, 220, 185, 0.75)'
+  ctx.font = '11px monospace'
+  ctx.textAlign = 'center'
+  ctx.fillText(`${profileLabel[el.profile] ?? 'GRIN'}  n₀=${el.n0.toFixed(2)}`, cx, cy + 4)
+  ctx.textAlign = 'left'
+
+  // ── Indicateur du gradient (flèche) à la sélection ───────────────────────
+  if (selected) {
+    // Flèche pointant vers les n croissants
+    const nTop    = nSamples[0]
+    const nBottom = nSamples[STOPS]
+    const arrowDir = nTop > nBottom ? -1 : 1  // -1 = vers haut, +1 = vers bas
+    const ax = cx + width * 0.3
+    const ay = cy
+    const arrowLen = Math.min(40, height * 0.3)
+    drawArrow(ctx, { x: ax, y: ay - arrowDir * arrowLen * 0.5 }, { x: ax, y: ay + arrowDir * arrowLen * 0.5 }, 'rgba(60, 220, 185, 0.8)')
+    ctx.fillStyle = 'rgba(60, 220, 185, 0.7)'
+    ctx.font = '10px monospace'
+    ctx.textAlign = 'center'
+    ctx.fillText('∇n', ax, ay + arrowDir * arrowLen * 0.5 + (arrowDir > 0 ? 14 : -6))
+    ctx.textAlign = 'left'
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// isGRINElement — utilisé par canvas-renderer pour l'ordre de dessin
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function isGRINElement(element: OpticalElement): boolean {
+  return element.type === 'grin'
 }
 
 function drawBeamSource(ctx: CanvasRenderingContext2D, source: BeamSource): void {

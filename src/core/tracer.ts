@@ -1,6 +1,7 @@
-import type { Ray, Scene, TraceResult, RaySegment, OpticalSurface, OpticalElement, Vec2, HitResult } from './types.ts'
+import type { Ray, Scene, TraceResult, RaySegment, OpticalSurface, OpticalElement, Vec2, HitResult, GRINMedium } from './types.ts'
 import { ThinLensSurface } from './elements/thin-lens.ts'
 import { reflect, refract } from './optics.ts'
+import { integrateGRIN, buildGRINSegment, exitRay as grinExitRay } from './tracer-grin.ts'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constantes
@@ -13,13 +14,36 @@ export const MAX_BOUNCES = 64
 export const FREE_RAY_LENGTH = 10_000
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GRIN helpers — duck typing, pas d'import de GRINElement
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Détecte si un OpticalElement implémente aussi GRINMedium (duck typing). */
+function isGRINMedium(el: OpticalElement): el is OpticalElement & GRINMedium {
+  return 'refractiveIndexAt' in el && 'gradientAt' in el
+}
+
+/**
+ * Retourne le premier milieu GRIN contenant `pos`, ou null.
+ * Appelé en début de chaque rebond pour détecter si le rayon est dans un GRIN.
+ */
+function findGRINMediumAt(pos: Vec2, scene: Scene): (OpticalElement & GRINMedium) | null {
+  for (const el of scene.elements) {
+    if (isGRINMedium(el) && el.containsPoint(pos)) {
+      return el as OpticalElement & GRINMedium
+    }
+  }
+  return null
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // traceRay — boucle de tracé principal
 //
 // Algorithme par rebond :
+//   0. Si l'origine est dans un milieu GRIN → intégrateur RK4 jusqu'à la sortie
 //   1. Trouver l'intersection la plus proche parmi toutes les surfaces
 //   2. Appliquer la physique :
 //        - ThinLensSurface   → déflexion (formule lentille mince exacte)
-//        - flat/curved-mirror → réflexion spéculaire
+//        - flat/curved/conic-mirror → réflexion spéculaire
 //        - surface réfractante → Snell-Descartes ; TIR → réflexion totale
 //   3. Émettre un RaySegment et continuer avec le nouveau rayon
 //
@@ -44,6 +68,23 @@ export function traceRay(ray: Ray, scene: Scene): TraceResult {
   let currentN = 1
 
   for (let bounce = 0; bounce < MAX_BOUNCES; bounce++) {
+    // ── 0. Milieu GRIN ? ─────────────────────────────────────────────────────
+    // Si le rayon se trouve à l'intérieur d'un milieu GRIN, on délègue
+    // la propagation à l'intégrateur RK4 jusqu'à la sortie du milieu.
+    const grin = findGRINMediumAt(current.origin, scene)
+    if (grin !== null) {
+      const grinResult = integrateGRIN(
+        current.origin,
+        current.direction,
+        grin,
+        current.wavelength,
+      )
+      segments.push(buildGRINSegment(grinResult, current.wavelength, current.intensity))
+      totalOpticalPath += grinResult.opticalPath
+      current = grinExitRay(current, grinResult)
+      continue
+    }
+
     // ── 1. Intersection la plus proche ──────────────────────────────────────
     let closest: HitResult | null = null
     let closestSurface: OpticalSurface | null = null

@@ -3,6 +3,7 @@ import { FlatMirror } from '../core/elements/flat-mirror.ts'
 import { ThinLens } from '../core/elements/thin-lens.ts'
 import { Prism } from '../core/elements/prism.ts'
 import { CurvedMirror } from '../core/elements/curved-mirror.ts'
+import { GRINElement } from '../core/elements/grin-medium.ts'
 import { BeamSource } from '../core/sources/beam.ts'
 import { PointSource } from '../core/sources/point-source.ts'
 
@@ -134,6 +135,83 @@ function pointSourceDemo(w: number, h: number): Scene {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+function grinFiber(w: number, h: number): Scene {
+  const cx = w / 2, cy = h / 2
+  // Fibre GRIN parabolique : n(r) = 1.5·(1 − 0.015²r²/2)
+  // Période T = 2π/0.015 ≈ 419 px → la fibre fait ~1.3 périodes
+  const alpha  = 0.015
+  const gW = 560, gH = 180
+  const gX = cx - gW / 2, gY = cy - gH / 2
+
+  return {
+    elements: [
+      new GRINElement({
+        id: 'grin-1', label: 'Fibre GRIN',
+        position: { x: gX, y: gY },
+        width: gW, height: gH,
+        profile: 'parabolic', n0: 1.5, alpha,
+      }),
+    ],
+    sources: [
+      // 5 rayons parallèles à l'entrée de la fibre, ±30px du centre
+      // Positionnés à x=gX (bord gauche) pour entrer directement dans le GRIN
+      new BeamSource({
+        id: 'beam-1',
+        position: { x: gX, y: cy },
+        angle: 0,
+        wavelengths: [555],
+        numRays: 5,
+        width: 60,
+      }),
+    ],
+    metadata: {
+      name: 'Fibre GRIN',
+      description: `Profil parabolique n(r)=1.5(1−α²r²/2), α=${alpha} px⁻¹, T=2π/α≈419 px. Trajectoires sinusoïdales.`,
+    },
+  }
+}
+
+function atmosphericMirage(w: number, h: number): Scene {
+  const cx = w / 2, cy = h / 2
+  // Gradient linéaire transverse : n décroît de haut en bas (α<0)
+  // → n plus élevé en haut (air frais / ciel) que en bas (air chaud / sol)
+  // → les rayons près du bas se courbent vers le haut = effet mirage
+  const alpha  = -0.0002   // Δn/px, négatif → n décroît avec y (vers le bas)
+  const n0     = 1.06      // indice au centre
+  const gW = 700, gH = 260
+  const gX = cx - gW / 2, gY = cy - gH / 2
+  // Source : 5 rayons proches du bas de la zone (y = cy + 80 à cy + 40)
+  // → courbure vers le haut (vers les n plus élevés)
+  const srcY = cy + 60
+
+  return {
+    elements: [
+      new GRINElement({
+        id: 'grin-1', label: 'Atmosphère',
+        position: { x: gX, y: gY },
+        width: gW, height: gH,
+        profile: 'linear', n0, alpha,
+      }),
+    ],
+    sources: [
+      new BeamSource({
+        id: 'beam-1',
+        position: { x: gX, y: srcY },
+        angle: 0,
+        wavelengths: [555],
+        numRays: 5,
+        width: 80,
+      }),
+    ],
+    metadata: {
+      name: 'Mirage atmosphérique',
+      description: `Gradient linéaire α=${alpha} Δn/px : n décroît vers le bas. Les rayons proches du sol se courbent vers le ciel.`,
+    },
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export const PRESETS: Preset[] = [
   { id: 'prism',      label: 'Dispersion — Prisme',       make: prismDispersion },
   { id: 'diamond',    label: 'Dispersion — Diamant',      make: diamondDispersion },
@@ -142,4 +220,6 @@ export const PRESETS: Preset[] = [
   { id: 'concave',    label: 'Miroir concave',             make: concaveMirror },
   { id: 'double-mir', label: 'Double miroir',              make: doubleMirror },
   { id: 'point-src',  label: 'Source ponctuelle',          make: pointSourceDemo },
+  { id: 'grin-fiber', label: 'Fibre GRIN',                 make: grinFiber },
+  { id: 'mirage',     label: 'Mirage atmosphérique',       make: atmosphericMirage },
 ]
