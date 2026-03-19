@@ -6,6 +6,7 @@ import { Block } from '../core/elements/block.ts'
 import { Prism } from '../core/elements/prism.ts'
 import { CurvedMirror } from '../core/elements/curved-mirror.ts'
 import { ThickLens } from '../core/elements/thick-lens.ts'
+import { ConicMirror } from '../core/elements/conic-mirror.ts'
 import { BeamSource } from '../core/sources/beam.ts'
 import { PointSource } from '../core/sources/point-source.ts'
 import { PRESETS } from './presets.ts'
@@ -77,6 +78,14 @@ export function Toolbar({ canvasW, canvasH, onSceneRef, onAddToScene, onLoadPres
     })
   }
 
+  function addConicMirror() {
+    add(scene => {
+      const id = uid('conic')
+      scene.elements.push(new ConicMirror({ id, position: { x: cx, y: cy }, angle: Math.PI, R: 200, kappa: -1, halfHeight: 80 }))
+      return id
+    })
+  }
+
   function addBlock() {
     add(scene => {
       const id = uid('block')
@@ -120,6 +129,7 @@ export function Toolbar({ canvasW, canvasH, onSceneRef, onAddToScene, onLoadPres
       <span className="toolbar-label">Éléments</span>
       <button className="toolbar-btn" onClick={addFlatMirror} title="Miroir plan">⟋ Miroir plan</button>
       <button className="toolbar-btn" onClick={addCurvedMirror} title="Miroir courbe">⌒ Miroir courbe</button>
+      <button className="toolbar-btn" onClick={addConicMirror} title="Miroir conique (parabolique, elliptique…)">⌓ Miroir conique</button>
       <button className="toolbar-btn" onClick={addThinLens} title="Lentille mince">⊕ Lentille</button>
       <button className="toolbar-btn" onClick={addThickLens} title="Lentille épaisse">⊙ Épaisse</button>
       <button className="toolbar-btn" onClick={addPrism} title="Prisme">△ Prisme</button>

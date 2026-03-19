@@ -440,16 +440,16 @@ I(s) = I₀ × exp(-α × s)
 
 ### Phase 3 — Surfaces coniques et aberrations
 
-- [ ] Surfaces coniques paramétriques (κ variable)
-- [ ] Intersection rayon/conique (Newton-Raphson)
-- [ ] Miroir parabolique (κ = -1)
-- [ ] Miroir elliptique, hyperbolique
-- [ ] Lentille épaisse (tracé à travers 2 surfaces)
+- [x] Surfaces coniques paramétriques (κ variable)
+- [x] Intersection rayon/conique (Newton-Raphson)
+- [x] Miroir parabolique (κ = -1)
+- [x] Miroir elliptique, hyperbolique (slider κ avec label dynamique)
+- [x] Lentille épaisse (tracé à travers 2 surfaces)
 
 **Validation :**
-- [ ] Test : miroir parabolique — faisceau parallèle → foyer exact
-- [ ] Test : aberration sphérique visible sur miroir sphérique
-- [ ] Test : comparaison sphérique vs parabolique
+- [x] Test : miroir parabolique — faisceau parallèle → foyer exact
+- [x] Test : aberration sphérique visible sur miroir sphérique
+- [x] Test : comparaison sphérique vs parabolique
 
 ### Phase 4 — Milieux GRIN et tracé courbe
 

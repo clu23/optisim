@@ -6,6 +6,7 @@ import { Block } from '../core/elements/block.ts'
 import { Prism } from '../core/elements/prism.ts'
 import { CurvedMirror } from '../core/elements/curved-mirror.ts'
 import { ThickLens, sagitta } from '../core/elements/thick-lens.ts'
+import { ConicMirror } from '../core/elements/conic-mirror.ts'
 import { BeamSource } from '../core/sources/beam.ts'
 import { PointSource } from '../core/sources/point-source.ts'
 import { rotate } from '../core/vector.ts'
@@ -38,6 +39,7 @@ export function drawElement(
   else if (element instanceof Prism)    drawPrism(ctx, element)
   else if (element instanceof CurvedMirror) drawCurvedMirror(ctx, element, selected)
   else if (element instanceof ThickLens)   drawThickLens(ctx, element, selected)
+  else if (element instanceof ConicMirror) drawConicMirror(ctx, element, selected)
   ctx.restore()
 }
 
@@ -246,6 +248,59 @@ function drawCurvedMirror(ctx: CanvasRenderingContext2D, mirror: CurvedMirror, s
     const F = mirror.focalPoint()
     drawFocalCross(ctx, F, 'F', MIRROR_COLOR)
     drawFocalCross(ctx, C, 'C', 'rgba(190, 190, 255, 0.85)')
+  }
+}
+
+function drawConicMirror(ctx: CanvasRenderingContext2D, mirror: ConicMirror, selected: boolean): void {
+  const ax   = mirror.axisDirection()
+  const perp: Vec2 = { x: -ax.y, y: ax.x }
+  const STEPS = 48
+  const h = mirror.halfHeight
+
+  // Axe optique en pointillés
+  drawOpticalAxis(ctx, mirror.position, ax, 320)
+
+  // ── Courbe conique par échantillonnage ─────────────────────────────────────
+  // Repère local : y ∈ [−h, +h], x_local = sag(|y|, R, κ)
+  // Repère monde : P = vertex + x_local·ax + y·perp
+  ctx.strokeStyle = MIRROR_COLOR
+  ctx.lineWidth = 3.5
+  ctx.lineCap = 'round'
+  ctx.shadowColor = MIRROR_COLOR
+  ctx.shadowBlur = 7
+  ctx.beginPath()
+  for (let i = 0; i <= STEPS; i++) {
+    const y   = -h + (2 * h * i) / STEPS
+    const sag = sagitta(Math.abs(y), mirror.R, mirror.kappa)
+    const pt: Vec2 = {
+      x: mirror.position.x + sag * ax.x + y * perp.x,
+      y: mirror.position.y + sag * ax.y + y * perp.y,
+    }
+    if (i === 0) ctx.moveTo(pt.x, pt.y); else ctx.lineTo(pt.x, pt.y)
+  }
+  ctx.stroke()
+
+  // ── Hachures côté non-réfléchissant (derrière l'axe) ──────────────────────
+  ctx.shadowBlur = 0
+  ctx.strokeStyle = 'rgba(140, 190, 250, 0.35)'
+  ctx.lineWidth = 1
+  const hatchCount = Math.max(4, Math.floor(2 * h / 12))
+  for (let i = 0; i <= hatchCount; i++) {
+    const y   = -h + (2 * h * i) / hatchCount
+    const sag = sagitta(Math.abs(y), mirror.R, mirror.kappa)
+    const pt: Vec2 = {
+      x: mirror.position.x + sag * ax.x + y * perp.x,
+      y: mirror.position.y + sag * ax.y + y * perp.y,
+    }
+    ctx.beginPath()
+    ctx.moveTo(pt.x, pt.y)
+    ctx.lineTo(pt.x - ax.x * 9, pt.y - ax.y * 9)
+    ctx.stroke()
+  }
+
+  // ── Foyer F à la sélection ─────────────────────────────────────────────────
+  if (selected) {
+    drawFocalCross(ctx, mirror.focalPoint(), 'F', MIRROR_COLOR)
   }
 }
 

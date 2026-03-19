@@ -6,6 +6,7 @@ import { Block } from '../core/elements/block.ts'
 import { Prism } from '../core/elements/prism.ts'
 import { CurvedMirror } from '../core/elements/curved-mirror.ts'
 import { ThickLens } from '../core/elements/thick-lens.ts'
+import { ConicMirror } from '../core/elements/conic-mirror.ts'
 import { BeamSource } from '../core/sources/beam.ts'
 import { PointSource } from '../core/sources/point-source.ts'
 
@@ -29,6 +30,7 @@ type ElementJSON =
   | { type: 'prism';          id: string; label: string; position: { x: number; y: number }; angle: number; size: number; apexAngle?: number; n: number; material?: MaterialId }
   | { type: 'curved-mirror';  id: string; label: string; position: { x: number; y: number }; angle: number; radius: number; aperture: number; concave: boolean }
   | { type: 'thick-lens';    id: string; label: string; position: { x: number; y: number }; angle: number; R1: number; R2: number; kappa1: number; kappa2: number; thickness: number; halfHeight: number; n: number; material?: MaterialId }
+  | { type: 'conic-mirror'; id: string; label: string; position: { x: number; y: number }; angle: number; R: number; kappa: number; halfHeight: number }
 
 type SourceJSON =
   | { type: 'beam';  id: string; position: { x: number; y: number }; angle: number; wavelengths: number[]; numRays: number; width: number }
@@ -57,6 +59,9 @@ export function serializeScene(scene: Scene): SceneJSON {
     }
     if (el instanceof ThickLens) {
       return { type: 'thick-lens', id: el.id, label: el.label, position: el.position, angle: el.angle, R1: el.R1, R2: el.R2, kappa1: el.kappa1, kappa2: el.kappa2, thickness: el.thickness, halfHeight: el.halfHeight, n: el.n, ...(el.material && { material: el.material }) }
+    }
+    if (el instanceof ConicMirror) {
+      return { type: 'conic-mirror', id: el.id, label: el.label, position: el.position, angle: el.angle, R: el.R, kappa: el.kappa, halfHeight: el.halfHeight }
     }
     throw new Error(`serializeScene: type d'élément inconnu "${el.type}"`)
   })
@@ -91,6 +96,7 @@ export function deserializeScene(json: SceneJSON): Scene {
       case 'prism':         return new Prism({ ...el, apexAngle: el.apexAngle, material: el.material })
       case 'curved-mirror': return new CurvedMirror(el)
       case 'thick-lens':    return new ThickLens(el)
+      case 'conic-mirror':  return new ConicMirror(el)
       default: throw new Error(`deserializeScene: type d'élément inconnu "${(el as { type: string }).type}"`)
     }
   })
