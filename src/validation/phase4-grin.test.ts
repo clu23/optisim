@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { GRINElement } from '../core/elements/grin-medium.ts'
 import { integrateGRIN } from '../core/tracer-grin.ts'
+import { traceRay } from '../core/tracer.ts'
+import type { Ray, Scene } from '../core/types.ts'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // V6 — Gradient linéaire transverse : trajectoire parabolique
@@ -247,6 +249,85 @@ describe('GRINElement — profil exponentiel', () => {
     expect(Math.abs(nGround - 1.3)).toBeLessThan(1e-10)
     expect(nHigh).toBeLessThan(1.05)   // proche de 1
     expect(nHigh).toBeGreaterThan(1.0) // toujours > 1
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// V — Rayon externe entrant dans un milieu GRIN
+//
+// Vérifie que lorsqu'un rayon part de l'extérieur d'un milieu GRIN :
+//   1. Un segment droit est émis jusqu'à la face d'entrée
+//   2. La réfraction air→n_GRIN est appliquée à l'entrée
+//   3. L'intégrateur RK4 produit une trajectoire courbe à l'intérieur
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('V — Rayon externe entrant dans un milieu GRIN', () => {
+  const grinX = 200, grinY = 100, grinW = 300, grinH = 200
+
+  function makeScene(id: string): { medium: GRINElement; scene: Scene } {
+    const medium = new GRINElement({
+      id,
+      position: { x: grinX, y: grinY },
+      width: grinW, height: grinH,
+      profile: 'parabolic',
+      n0: 1.5, alpha: 0.015,
+    })
+    const scene: Scene = { elements: [medium], sources: [], metadata: { name: 'Test' } }
+    return { medium, scene }
+  }
+
+  it('génère au moins 2 segments : un droit avant le GRIN, un courbe dedans', () => {
+    const { scene } = makeScene('ext-entry-1')
+    // Rayon décalé de 20 px du centre pour que la courbure soit visible
+    const ray: Ray = {
+      origin:    { x: 50, y: grinY + grinH / 2 + 20 },
+      direction: { x: 1, y: 0 },
+      wavelength: 555, intensity: 1,
+    }
+    const result = traceRay(ray, scene)
+    expect(result.segments.length).toBeGreaterThanOrEqual(2)
+
+    // Premier segment : droit (aucun curvePoints)
+    expect(result.segments[0].curvePoints).toBeUndefined()
+
+    // Deuxième segment : courbe (curvePoints présents)
+    const curveSeg = result.segments[1]
+    expect(curveSeg.curvePoints).toBeDefined()
+    expect(curveSeg.curvePoints!.length).toBeGreaterThan(2)
+  })
+
+  it('les points de la trajectoire interne sont non-colinéaires', () => {
+    const { scene } = makeScene('ext-entry-2')
+    const ray: Ray = {
+      origin:    { x: 50, y: grinY + grinH / 2 + 30 },
+      direction: { x: 1, y: 0 },
+      wavelength: 555, intensity: 1,
+    }
+    const result = traceRay(ray, scene)
+    const curveSeg = result.segments.find(s => s.curvePoints !== undefined)
+    expect(curveSeg).toBeDefined()
+
+    const pts = curveSeg!.curvePoints!
+    const dx1 = pts[1].x - pts[0].x
+    const dy1 = pts[1].y - pts[0].y
+    const dxN = pts[pts.length - 1].x - pts[0].x
+    const dyN = pts[pts.length - 1].y - pts[0].y
+    // Produit vectoriel ≠ 0 → non-colinéaires → trajectoire courbée
+    const cross = dx1 * dyN - dy1 * dxN
+    expect(Math.abs(cross)).toBeGreaterThan(1)
+  })
+
+  it('le premier segment se termine sur la face gauche du GRIN (x ≈ grinX)', () => {
+    const { scene } = makeScene('ext-entry-3')
+    const ray: Ray = {
+      origin:    { x: 50, y: grinY + grinH / 2 },
+      direction: { x: 1, y: 0 },
+      wavelength: 555, intensity: 1,
+    }
+    const result = traceRay(ray, scene)
+    expect(result.segments.length).toBeGreaterThanOrEqual(2)
+    // Le premier segment doit se terminer à x ≈ grinX (face gauche)
+    expect(Math.abs(result.segments[0].end.x - grinX)).toBeLessThan(2)
   })
 })
 
