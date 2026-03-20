@@ -103,7 +103,9 @@ function drawRays(ctx: CanvasRenderingContext2D, results: TraceResult[], scale: 
   for (const result of results) {
     for (const seg of result.segments) {
       const intensity = Math.max(0, Math.min(1, seg.intensity))
-      const color = wavelengthToColor(seg.wavelength, intensity * 0.9)
+      // Couleur pure (alpha=1) : l'opacité est contrôlée uniquement par globalAlpha.
+      // On évite de multiplier l'intensité deux fois (une fois dans rgba, une dans globalAlpha).
+      const color = wavelengthToColor(seg.wavelength, 1)
 
       ctx.save()
       ctx.strokeStyle = color
@@ -111,7 +113,7 @@ function drawRays(ctx: CanvasRenderingContext2D, results: TraceResult[], scale: 
       ctx.lineWidth = lwBase * Math.max(0.3, intensity)
       ctx.shadowColor = color
       ctx.shadowBlur = (4 * intensity + 1) / scale
-      ctx.globalAlpha = Math.max(0.05, intensity)
+      ctx.globalAlpha = Math.max(0.05, intensity * 0.9)
 
       if (seg.curvePoints && seg.curvePoints.length > 1) {
         ctx.beginPath()

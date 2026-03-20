@@ -1,6 +1,7 @@
 import type { Scene } from '../core/types.ts'
 import { FlatMirror } from '../core/elements/flat-mirror.ts'
 import { ThinLens } from '../core/elements/thin-lens.ts'
+import { Block } from '../core/elements/block.ts'
 import { Prism } from '../core/elements/prism.ts'
 import { CurvedMirror } from '../core/elements/curved-mirror.ts'
 import { GRINElement } from '../core/elements/grin-medium.ts'
@@ -212,6 +213,52 @@ function atmosphericMirage(w: number, h: number): Scene {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+function brewsterAngleDemo(w: number, h: number): Scene {
+  const cx = w / 2, cy = h / 2
+  // θ_B = arctan(n2/n1) = arctan(1.5) ≈ 56.31°
+  // On tire à cet angle sur la face gauche du bloc.
+  // Le rayon p (TM) passe intégralement (Rp = 0), le rayon s (TE) se reflète à ~14.8%.
+  const thetaB = Math.atan(1.5)   // ≈ 0.9828 rad ≈ 56.31°
+
+  // Bloc de verre n=1.5, face gauche à cx
+  const blockX = cx
+  const blockW = 80, blockH = 260
+  const block = new Block({
+    id: 'block-1', label: 'Verre n=1.5',
+    position: { x: blockX, y: cy - blockH / 2 },
+    angle: 0, width: blockW, height: blockH, n: 1.5,
+  })
+
+  // Les deux sources arrivent du même point (cx − 250, cy) mais décalées de ±30 px en y
+  // pour séparer visuellement les deux faisceaux.
+  // Angle = thetaB (direction +x, +y) → on dirige vers la face gauche du bloc.
+  const srcX = cx - 250
+
+  const beamS = new BeamSource({
+    id: 'beam-s', position: { x: srcX, y: cy - 30 },
+    angle: thetaB,
+    wavelengths: [555], numRays: 1, width: 0,
+    polarization: 's',
+  })
+  const beamP = new BeamSource({
+    id: 'beam-p', position: { x: srcX, y: cy + 30 },
+    angle: thetaB,
+    wavelengths: [555], numRays: 1, width: 0,
+    polarization: 'p',
+  })
+
+  return {
+    elements: [block],
+    sources: [beamS, beamP],
+    metadata: {
+      name: 'Angle de Brewster',
+      description: `θ_B = arctan(1.5) ≈ 56.3°. Polarisation s (vert) : réflexion ~14.8%. Polarisation p (vert) : Rp = 0, pas de reflet.`,
+    },
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export const PRESETS: Preset[] = [
   { id: 'prism',      label: 'Dispersion — Prisme',       make: prismDispersion },
   { id: 'diamond',    label: 'Dispersion — Diamant',      make: diamondDispersion },
@@ -222,4 +269,5 @@ export const PRESETS: Preset[] = [
   { id: 'point-src',  label: 'Source ponctuelle',          make: pointSourceDemo },
   { id: 'grin-fiber', label: 'Fibre GRIN',                 make: grinFiber },
   { id: 'mirage',     label: 'Mirage atmosphérique',       make: atmosphericMirage },
+  { id: 'brewster',   label: 'Angle de Brewster',          make: brewsterAngleDemo },
 ]
