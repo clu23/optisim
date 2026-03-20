@@ -83,9 +83,22 @@ export interface LightSource {
 
 // === SCÈNE ===
 
+/**
+ * Unités physiques de la scène (Phase 7A).
+ * scale : millimètres par pixel à zoom=1.
+ * Valeur par défaut : scale=1 (1 px = 1 mm, rétrocompatible avec les phases 1-6).
+ */
+export interface WorldUnits {
+  scale: number;                      // mm/px à zoom=1
+  displayUnit: 'mm' | 'µm' | 'cm';   // Unité affichée dans le panneau
+}
+
+export const DEFAULT_WORLD_UNITS: WorldUnits = { scale: 1, displayUnit: 'mm' }
+
 export interface SceneMetadata {
   name: string;
   description?: string;
+  units?: WorldUnits;  // Optionnel — absent dans les scènes legacy (phases 1-6)
 }
 
 export interface Scene {

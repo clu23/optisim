@@ -5,7 +5,7 @@
 OptiSim est un simulateur interactif d'optique géométrique (TypeScript + React + Canvas 2D, tooling Vite).
 Il couvre le tracé de rayons exact, la dispersion, les surfaces coniques, les milieux GRIN (tracé courbe), les coefficients de Fresnel, et l'absorption.
 
-Le développement est progressif en 6 phases. Voir `SPECS.md` pour le détail complet.
+Le développement est progressif en 7 phases (6 complètes + phase 7 proto-design). Voir `SPECS.md` pour le détail complet.
 
 ---
 
@@ -87,6 +87,22 @@ npm run typecheck    # Vérification TypeScript sans émission
 - [ ] Vérifier les unités (radians dans core, degrés dans l'UI)
 - [ ] Vérifier les cas limites : angle rasant (θ→90°), incidence normale (θ=0°), indice = 1
 
+### Checklist — Ajout d'un verre au catalogue
+
+- [ ] Trouver les coefficients de Sellmeier dans le catalogue Schott officiel ou refractiveindex.info
+- [ ] Pré-calculer nD (589.3 nm), nF (486.1 nm), nC (656.3 nm) et le numéro d'Abbe νD
+- [ ] Ajouter l'entrée dans `core/glass-catalog.ts` avec B1/B2/B3/C1/C2/C3 (λ en µm)
+- [ ] Écrire un test vérifiant nD, nF, nC contre les valeurs Schott à ±1e-5
+- [ ] Vérifier que le verre apparaît dans le sélecteur UI et le diagramme d'Abbe
+
+### Checklist — Modification des métriques (spot diagram, RMS)
+
+- [ ] Définir un cas analytique de référence (ex: miroir parabolique → RMS ≈ 0)
+- [ ] Calculer la métrique attendue à la main ou avec une formule
+- [ ] Vérifier que le code produit le même résultat à ±1e-3
+- [ ] Vérifier que le RMS diminue avec le diaphragme (comportement attendu)
+- [ ] Documenter le cas de test dans `validation/`
+
 ### Checklist — Modification UI/Rendu
 
 - [ ] Vérifier que le drag & drop fonctionne toujours
@@ -162,9 +178,12 @@ r_p = (n₂cosθ₁ − n₁cosθ₂)/(n₂cosθ₁ + n₁cosθ₂)
 - **Orientation des normales** : toujours vers le rayon incident. Si `d⃗·n⃗ > 0`, inverser `n⃗`.
 - **Entrée vs sortie d'un milieu** : tracker si on est "à l'intérieur" d'un élément pour inverser n₁/n₂.
 - **Réflexion totale** : vérifier `sin²(θ₂) > 1` AVANT de calculer la racine carrée.
-- **Angle de Cauchy** : λ doit être en **micromètres**, pas en nanomètres.
+- **Angle de Cauchy / Sellmeier** : λ doit être en **micromètres**, pas en nanomètres.
+- **Sellmeier** : vérifier que `λ² - Ci > 0` pour toutes les longueurs d'onde visibles (singularités dans l'UV).
 - **RK4 dans GRIN** : renormaliser `p⃗` à chaque pas pour éviter la dérive numérique.
 - **Coniques** : Newton-Raphson peut diverger si le point initial est mauvais. Utiliser l'intersection sphérique comme point de départ.
+- **Unités mm vs px** : le moteur physique (phase 7+) travaille en mm. Toujours convertir via `scale` (mm/px) avant d'afficher. Ne jamais mélanger les deux dans un même calcul.
+- **Convention de signe des rayons de courbure** : R > 0 si le centre de courbure est à droite (convention optique standard). Un R négatif donne une surface concave côté gauche.
 
 ---
 
@@ -178,6 +197,10 @@ Le développement suit 6 phases séquentielles. Ne commence PAS une phase si la 
 - **Phase 4** : Milieux GRIN et tracé courbe (eikonale, RK4, pas adaptatif)
 - **Phase 5** : Fresnel et énergie (intensité, polarisation s/p, Brewster)
 - **Phase 6** : Enrichissements (chemin optique, Beer-Lambert, systèmes complets)
+- **Phase 7A** : Unités physiques mm + catalogue de verres Sellmeier (~30 Schott) + diagramme d'Abbe
+- **Phase 7B** : Spot diagram, RMS spot size, ray fan, aberration chromatique longitudinale
+- **Phase 7C** : Objet/image, diaphragme, pupilles d'entrée/sortie, f/N, NA, multi-champ
+- **Phase 7D** : Tableau de prescription (import/export), optimiseur mono-variable (section dorée), coating AR quart d'onde
 
 Voir `SPECS.md` pour le détail de chaque phase avec les checkboxes.
 

@@ -488,6 +488,61 @@ I(s) = I₀ × exp(-α × s)
 
 ---
 
+## Phase 7 — Proto-Design (v2.0)
+
+*Cette phase transforme OptiSim d'un simulateur exploratoire en un outil de proto-design optique capable de produire des résultats quantitatifs vérifiables.*
+
+### Phase 7A — Unités physiques et catalogue de verres
+
+- [x] Système d'unités WorldUnits dans Scene (mm par pixel, displayUnit)
+- [x] Conversion px ↔ mm dans tout le panneau de propriétés
+- [x] Règle graduée sur le canvas (horizontale + verticale, unités WorldUnits)
+- [x] core/glass-catalog.ts avec formule de Sellmeier
+- [x] Données de ~27 verres Schott (crowns + flints + spéciaux)
+- [x] Sélecteur de verre dans PropertiesPanel (dropdown + recherche + Sellmeier)
+- [x] Diagramme d'Abbe interactif (nD vs νD, clic = sélection)
+- [x] Migration des matériaux existants (BK7, SF11) vers Sellmeier (glassId dans Block/Prism/ThickLens)
+- [x] Tests : indices Sellmeier vs valeurs Schott de référence (nD ±1e-4, νD ±0.1)
+- [x] Tests : compatibilité ascendante avec les scènes JSON existantes (glassId optionnel)
+
+### Phase 7B — Spot diagram et métriques de qualité
+
+- [ ] Élément ImagePlane (draggable, collecte les hits de rayons)
+- [ ] Calcul SpotData (centroid, rmsRadius, maxRadius, geoRadius)
+- [ ] Affichage spot diagram (panneau dédié, échelle µm)
+- [ ] Curseur best focus (déplacement du plan image le long de l'axe)
+- [ ] Ray fan : calcul et affichage Δy(h) par longueur d'onde
+- [ ] Aberration chromatique longitudinale : graphe focus(λ)
+- [ ] Tests : système parfait (miroir parabolique) → RMS ≈ 0
+- [ ] Tests : lentille simple → RMS > 0, diminue avec diaphragme
+- [ ] Tests : doublet achromat → chromatique longitudinale < lentille simple
+
+### Phase 7C — Objet, image, diaphragme et pupilles
+
+- [ ] Élément OpticalObject (flèche finie ou faisceau infini)
+- [ ] Calcul et affichage de l'image (position, grandissement)
+- [ ] Élément Aperture (diaphragme, bloque les rayons hors ouverture)
+- [ ] Calcul des pupilles d'entrée et de sortie
+- [ ] Nombre d'ouverture f/N et ouverture numérique NA
+- [ ] Multi-champ : faisceaux à 0°, 50%, 100% du champ
+- [ ] Tests : objet au foyer d'une lentille → image à l'infini
+- [ ] Tests : grandissement d'une lentille mince = -v/u
+- [ ] Tests : diaphragme bloque les rayons hors ouverture
+
+### Phase 7D — Prescription, optimiseur et coating
+
+- [ ] Génération du tableau de prescription (format standard)
+- [ ] Export CSV + copie presse-papier
+- [ ] Import par collage d'une prescription
+- [ ] Optimiseur mono-variable (balayage + section dorée)
+- [ ] Affichage graphe métrique(paramètre) avec minimum marqué
+- [ ] Coating quart d'onde sur les surfaces (single-layer AR)
+- [ ] Modification des coefficients de Fresnel avec coating
+- [ ] Tests : coating idéal (n₂ = √(n₁n₃)) → R = 0 à λ₀
+- [ ] Tests : optimiseur trouve le minimum connu d'un cas simple
+
+---
+
 ## 6. Scènes de validation physique
 
 Chaque scène a un résultat analytique calculable à la main.

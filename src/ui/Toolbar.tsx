@@ -21,13 +21,15 @@ interface Props {
   onSceneRef: () => Scene | null
   onSelectId: (id: string) => void
   onSceneLoaded: (scene: Scene) => void
+  useMm: boolean
+  onToggleMm: () => void
 }
 
 function uid(prefix: string) {
   return `${prefix}-${Date.now()}`
 }
 
-export function Toolbar({ canvasW, canvasH, onSceneRef, onAddToScene, onLoadPreset, onSelectId, onSceneLoaded }: Props) {
+export function Toolbar({ canvasW, canvasH, onSceneRef, onAddToScene, onLoadPreset, onSelectId, onSceneLoaded, useMm, onToggleMm }: Props) {
   const cx = canvasW / 2
   const cy = canvasH / 2
 
@@ -157,6 +159,18 @@ export function Toolbar({ canvasW, canvasH, onSceneRef, onAddToScene, onLoadPres
       <button className="toolbar-btn" onClick={addPointSrc} title="Source ponctuelle">✦ Point</button>
 
       <div className="toolbar-sep" style={{ marginLeft: 'auto' }} />
+
+      {/* Unités */}
+      <button
+        className="toolbar-btn"
+        title="Basculer entre pixels et millimètres"
+        onClick={onToggleMm}
+        style={{ fontWeight: useMm ? 700 : 400, color: useMm ? '#60c8ff' : undefined }}
+      >
+        {useMm ? 'mm' : 'px'}
+      </button>
+
+      <div className="toolbar-sep" />
 
       {/* Fichier */}
       <button

@@ -2,6 +2,7 @@ import type { Vec2, OpticalSurface, OpticalElement, BoundingBox } from '../types
 import { ConicSurface } from '../surfaces/conic.ts'
 import { add, scale, rotate } from '../vector.ts'
 import { materialIndex, type MaterialId } from '../dispersion.ts'
+import { glassIndex } from '../glass-catalog.ts'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Sagitta — profondeur axiale d'une surface conique à hauteur r
@@ -60,10 +61,12 @@ export interface ThickLensParams {
   /** Indice de réfraction fixe (utilisé si material absent). */
   n: number
   /**
-   * Matériau du catalogue (Cauchy) — optionnel.
+   * Matériau du catalogue Cauchy — optionnel (legacy).
    * Si présent, n(λ) est calculé par dispersion de Cauchy.
    */
   material?: MaterialId
+  /** Identifiant dans le catalogue Sellmeier (ex: 'N-BK7'). Prioritaire sur material. */
+  glassId?: string
   /** Coefficient d'absorption Beer-Lambert (px⁻¹). 0 = transparent. */
   absorptionCoeff?: number
   label?: string
@@ -82,6 +85,7 @@ export class ThickLens implements OpticalElement {
   halfHeight: number
   n: number
   material: MaterialId | undefined
+  glassId: string | undefined
   absorptionCoeff: number
   label: string
 
@@ -97,6 +101,7 @@ export class ThickLens implements OpticalElement {
     this.halfHeight      = p.halfHeight
     this.n               = p.n
     this.material        = p.material
+    this.glassId         = p.glassId
     this.absorptionCoeff = p.absorptionCoeff ?? 0
     this.label           = p.label ?? 'Lentille épaisse'
   }
@@ -106,8 +111,10 @@ export class ThickLens implements OpticalElement {
     return rotate({ x: 1, y: 0 }, this.angle)
   }
 
-  /** Indice de réfraction à la longueur d'onde donnée (Cauchy ou fixe). */
+  /** Retourne l'indice à la longueur d'onde donnée.
+   * Priorité : glassId (Sellmeier) > material (Cauchy) > n (fixe). */
   indexAt(wavelengthNm: number): number {
+    if (this.glassId) { const n = glassIndex(this.glassId, wavelengthNm); if (n !== undefined) return n }
     return this.material ? materialIndex(this.material, wavelengthNm) : this.n
   }
 

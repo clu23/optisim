@@ -1,4 +1,5 @@
-import type { Scene, TraceResult, Vec2 } from '../core/types.ts'
+import type { Scene, TraceResult, Vec2, WorldUnits } from '../core/types.ts'
+import { DEFAULT_WORLD_UNITS } from '../core/types.ts'
 import { drawElement, drawSource, isGRINElement } from './element-renderer.ts'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -342,6 +343,129 @@ export function drawHUD(
   ctx.font = '12px monospace'
   ctx.textAlign = 'right'
   ctx.fillText(zoomPct, width - 10, 20)
+  ctx.restore()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// drawRuler — règle graduée en unités physiques (phase 7A)
+//
+// Dessine deux règles (horizontale en haut, verticale à gauche) calibrées en mm
+// (ou µm / cm selon WorldUnits.displayUnit). Les tick-marks sont en espace monde
+// converti en écran, et les labels tiennent compte du scale mm/px.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function drawRuler(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  view: ViewTransform,
+  worldUnits: WorldUnits = DEFAULT_WORLD_UNITS,
+): void {
+  const { offsetX, offsetY, scale } = view
+  // screen pixels per mm
+  const pxPerMm = scale / worldUnits.scale
+
+  // Choisir un pas de graduation "agréable" (en mm) pour ~60-100 px entre ticks
+  const targetPxBetweenTicks = 80
+  const rawMmStep = targetPxBetweenTicks / pxPerMm
+  const magnitude = Math.pow(10, Math.floor(Math.log10(rawMmStep)))
+  const normalized = rawMmStep / magnitude
+  const niceFactor = normalized < 1.5 ? 1 : normalized < 3.5 ? 2 : normalized < 7.5 ? 5 : 10
+  const mmStep = niceFactor * magnitude
+
+  // Unité d'affichage et facteur de conversion depuis mm
+  let unitLabel: string
+  let mmToUnit: number
+  switch (worldUnits.displayUnit) {
+    case 'µm': unitLabel = 'µm'; mmToUnit = 1000; break
+    case 'cm': unitLabel = 'cm'; mmToUnit = 0.1;  break
+    default:   unitLabel = 'mm'; mmToUnit = 1;    break
+  }
+
+  const RULER_SIZE = 18  // largeur de la règle en px écran
+
+  ctx.save()
+
+  // ── Fond des règles ───────────────────────────────────────────────────────
+  ctx.fillStyle = 'rgba(13, 20, 28, 0.85)'
+  ctx.fillRect(0, 0, width, RULER_SIZE)          // horizontale
+  ctx.fillRect(0, 0, RULER_SIZE, height)          // verticale
+  // Coin supérieur gauche
+  ctx.fillStyle = '#0d141c'
+  ctx.fillRect(0, 0, RULER_SIZE, RULER_SIZE)
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.15)'
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  ctx.moveTo(0, RULER_SIZE); ctx.lineTo(width, RULER_SIZE); ctx.stroke()
+  ctx.beginPath()
+  ctx.moveTo(RULER_SIZE, 0); ctx.lineTo(RULER_SIZE, height); ctx.stroke()
+
+  // ── Ticks et labels ───────────────────────────────────────────────────────
+  ctx.fillStyle = 'rgba(180, 200, 220, 0.7)'
+  ctx.font = '9px monospace'
+
+  // Origine monde en pixels écran
+  const ox = offsetX  // screen px at world x=0
+  const oy = offsetY  // screen px at world y=0
+
+  // Pas en px écran
+  const stepPx = mmStep / worldUnits.scale * scale
+
+  // Ruler horizontale (en haut)
+  const xStart = Math.floor((-ox) / stepPx) - 1
+  const xEnd   = Math.ceil((width - ox) / stepPx) + 1
+  for (let i = xStart; i <= xEnd; i++) {
+    const sx = ox + i * stepPx
+    if (sx < RULER_SIZE || sx > width) continue
+    const isMajor = (i % 5 === 0)
+    ctx.strokeStyle = isMajor ? 'rgba(180,200,220,0.5)' : 'rgba(180,200,220,0.2)'
+    ctx.lineWidth = 0.5
+    ctx.beginPath()
+    ctx.moveTo(sx, RULER_SIZE)
+    ctx.lineTo(sx, RULER_SIZE - (isMajor ? 8 : 4))
+    ctx.stroke()
+    if (isMajor) {
+      const valMm = i * mmStep
+      const valDisplay = valMm * mmToUnit
+      ctx.fillStyle = 'rgba(160,185,210,0.8)'
+      ctx.textAlign = 'center'
+      ctx.fillText(valDisplay % 1 === 0 ? String(Math.round(valDisplay)) : valDisplay.toFixed(1), sx, 8)
+    }
+  }
+
+  // Ruler verticale (à gauche)
+  const yStart = Math.floor((-oy) / stepPx) - 1
+  const yEnd   = Math.ceil((height - oy) / stepPx) + 1
+  for (let i = yStart; i <= yEnd; i++) {
+    const sy = oy + i * stepPx
+    if (sy < RULER_SIZE || sy > height) continue
+    const isMajor = (i % 5 === 0)
+    ctx.strokeStyle = isMajor ? 'rgba(180,200,220,0.5)' : 'rgba(180,200,220,0.2)'
+    ctx.lineWidth = 0.5
+    ctx.beginPath()
+    ctx.moveTo(RULER_SIZE, sy)
+    ctx.lineTo(RULER_SIZE - (isMajor ? 8 : 4), sy)
+    ctx.stroke()
+    if (isMajor) {
+      const valMm = i * mmStep
+      const valDisplay = valMm * mmToUnit
+      ctx.save()
+      ctx.translate(8, sy)
+      ctx.rotate(-Math.PI / 2)
+      ctx.fillStyle = 'rgba(160,185,210,0.8)'
+      ctx.textAlign = 'center'
+      ctx.fillText(valDisplay % 1 === 0 ? String(Math.round(valDisplay)) : valDisplay.toFixed(1), 0, 3)
+      ctx.restore()
+    }
+  }
+
+  // Unité dans le coin
+  ctx.fillStyle = 'rgba(100,140,160,0.9)'
+  ctx.font = '8px monospace'
+  ctx.textAlign = 'center'
+  ctx.fillText(unitLabel, RULER_SIZE / 2, RULER_SIZE / 2 + 3)
+
   ctx.restore()
 }
 

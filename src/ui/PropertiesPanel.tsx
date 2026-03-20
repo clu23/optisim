@@ -13,6 +13,7 @@ import { BeamSource } from '../core/sources/beam.ts'
 import { PointSource } from '../core/sources/point-source.ts'
 import { wavelengthToColor } from '../renderer/canvas-renderer.ts'
 import { MATERIALS, referenceIndex, type MaterialId } from '../core/dispersion.ts'
+import { GLASS_CATALOG, sellmeierIndex, LAMBDA_D } from '../core/glass-catalog.ts'
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -25,6 +26,41 @@ interface Props {
   selectedId: string | null
   onUpdate: () => void
   onDelete: (id: string) => void
+  useMm?: boolean   // afficher les distances en mm (phase 7A)
+  scale?: number    // mm/px (WorldUnits.scale)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UnitCtx — contexte de conversion unités pour les panneaux de propriétés
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface UnitCtx {
+  /** Interne (px) → display (mm ou px). */
+  toD: (px: number) => number
+  /** Display (mm ou px) → interne (px). */
+  toI: (d: number) => number
+  /** Suffixe d'unité : ' mm' ou ' px'. */
+  unit: string
+  /** Pas de drag en unités display. */
+  step: number
+  /** Décimales en unités display. */
+  digits: number
+}
+
+function makeUnitCtx(useMm: boolean, scale: number): UnitCtx {
+  if (!useMm) return { toD: v => v, toI: v => v, unit: ' px', step: 1, digits: 0 }
+  const digits = scale < 0.1 ? 3 : scale < 1 ? 2 : 1
+  // Pas : 1 pixel exprimé en mm, arrondi à 1 chiffre significatif
+  const raw = scale
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)))
+  const step = Math.round(raw / mag) * mag
+  return {
+    toD:  v => +(v * scale).toFixed(digits + 2),
+    toI:  v => v / scale,
+    unit: ' mm',
+    step: Math.max(0.01, step),
+    digits,
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -149,27 +185,188 @@ function DragNumber({ label, value, min, max, step, unit = '', digits = 1, onCha
 const Slider = DragNumber
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MaterialSelect — sélecteur de matériau (Cauchy) pour Prisme et Bloc
+// GlassSelect — sélecteur unifié : n fixe | Cauchy (legacy) | Sellmeier catalogue
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Encodage de la valeur du <select> :
+//   ""          → pas de matériau (n fixe)
+//   "cauchy:ID" → matériau Cauchy (MaterialId)
+//   "glass:ID"  → verre Sellmeier (GLASS_CATALOG)
 // ─────────────────────────────────────────────────────────────────────────────
 
-function MaterialSelect({ value, onChange }: { value: MaterialId | undefined; onChange: (v: MaterialId | undefined) => void }) {
+interface GlassSelectProps {
+  material: MaterialId | undefined
+  glassId: string | undefined
+  onChangeMaterial: (v: MaterialId | undefined) => void
+  onChangeGlassId: (v: string | undefined) => void
+}
+
+function GlassSelect({ material, glassId, onChangeMaterial, onChangeGlassId }: GlassSelectProps) {
+  const [search, setSearch] = useState('')
+  const abbeRef = useRef<HTMLCanvasElement>(null)
+
+  // Valeur encodée courante
+  const currentValue = glassId ? `glass:${glassId}` : material ? `cauchy:${material}` : ''
+
+  function handleChange(encoded: string) {
+    if (encoded === '') {
+      onChangeGlassId(undefined)
+      onChangeMaterial(undefined)
+    } else if (encoded.startsWith('glass:')) {
+      onChangeGlassId(encoded.slice(6))
+      onChangeMaterial(undefined)
+    } else if (encoded.startsWith('cauchy:')) {
+      onChangeMaterial(encoded.slice(7) as MaterialId)
+      onChangeGlassId(undefined)
+    }
+  }
+
+  const filtered = search.trim().length > 0
+    ? GLASS_CATALOG.filter(g =>
+        g.id.toLowerCase().includes(search.toLowerCase()) ||
+        g.name.toLowerCase().includes(search.toLowerCase())
+      )
+    : GLASS_CATALOG
+
+  // ── Diagramme d'Abbe ──────────────────────────────────────────────────────
+  // Axes : νD en abscisse (95→20 de gauche à droite), nD en ordonnée (1.9→1.4 haut→bas)
+  useEffect(() => {
+    const canvas = abbeRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    const W = canvas.width, H = canvas.height
+    const PAD = 16
+
+    const nuMin = 18, nuMax = 100
+    const nMin = 1.42, nMax = 1.92
+
+    function toX(nu: number) { return PAD + (1 - (nu - nuMin) / (nuMax - nuMin)) * (W - 2 * PAD) }
+    function toY(nd: number) { return PAD + (1 - (nd - nMin) / (nMax - nMin)) * (H - 2 * PAD) }
+
+    ctx.clearRect(0, 0, W, H)
+    ctx.fillStyle = '#0d1a24'
+    ctx.fillRect(0, 0, W, H)
+
+    // Grille
+    ctx.strokeStyle = '#1e2e3e'
+    ctx.lineWidth = 0.5
+    for (const nu of [20, 30, 40, 50, 60, 70, 80, 90]) {
+      ctx.beginPath(); ctx.moveTo(toX(nu), PAD); ctx.lineTo(toX(nu), H - PAD); ctx.stroke()
+    }
+    for (const nd of [1.5, 1.6, 1.7, 1.8, 1.9]) {
+      ctx.beginPath(); ctx.moveTo(PAD, toY(nd)); ctx.lineTo(W - PAD, toY(nd)); ctx.stroke()
+    }
+
+    // Axes labels
+    ctx.fillStyle = '#4a6a7a'
+    ctx.font = '8px monospace'
+    ctx.textAlign = 'center'
+    for (const nu of [20, 40, 60, 80]) {
+      ctx.fillText(String(nu), toX(nu), H - 3)
+    }
+    ctx.textAlign = 'right'
+    for (const nd of [1.5, 1.6, 1.7, 1.8]) {
+      ctx.fillText(nd.toFixed(1), PAD - 1, toY(nd) + 3)
+    }
+
+    // Tous les verres du catalogue
+    for (const g of GLASS_CATALOG) {
+      const x = toX(g.abbeNumber), y = toY(g.nD)
+      const isSel = g.id === glassId
+      ctx.beginPath()
+      ctx.arc(x, y, isSel ? 4 : 2.5, 0, Math.PI * 2)
+      ctx.fillStyle = isSel ? '#60c8ff' : '#3a7a9a'
+      ctx.fill()
+      if (isSel) {
+        ctx.fillStyle = '#60c8ff'
+        ctx.font = '8px monospace'
+        ctx.textAlign = x < W / 2 ? 'left' : 'right'
+        ctx.fillText(g.id, x + (x < W / 2 ? 6 : -6), y + 3)
+      }
+    }
+
+    // Label axes
+    ctx.fillStyle = '#4a6a7a'
+    ctx.font = '7px monospace'
+    ctx.textAlign = 'center'
+    ctx.fillText('νD →', W / 2, H - 1)
+  }, [glassId])
+
+  // Clic sur le diagramme → sélection du verre le plus proche
+  function handleAbbeClick(e: React.MouseEvent<HTMLCanvasElement>) {
+    const canvas = abbeRef.current
+    if (!canvas) return
+    const rect = canvas.getBoundingClientRect()
+    const px = (e.clientX - rect.left) * (canvas.width / rect.width)
+    const py = (e.clientY - rect.top) * (canvas.height / rect.height)
+    const W = canvas.width, H = canvas.height, PAD = 16
+    const nuMin = 18, nuMax = 100, nMin = 1.42, nMax = 1.92
+
+    function toX(nu: number) { return PAD + (1 - (nu - nuMin) / (nuMax - nuMin)) * (W - 2 * PAD) }
+    function toY(nd: number) { return PAD + (1 - (nd - nMin) / (nMax - nMin)) * (H - 2 * PAD) }
+
+    let best: typeof GLASS_CATALOG[0] | null = null, bestDist = Infinity
+    for (const g of GLASS_CATALOG) {
+      const d = Math.hypot(px - toX(g.abbeNumber), py - toY(g.nD))
+      if (d < bestDist) { bestDist = d; best = g }
+    }
+    if (best && bestDist < 12) {
+      onChangeGlassId(best.id)
+      onChangeMaterial(undefined)
+    }
+  }
+
   return (
-    <div className="prop-row">
+    <div className="prop-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 4 }}>
       <div className="prop-header">
         <span className="prop-label">Matériau</span>
         <select
           className="prop-material-select"
-          value={value ?? ''}
-          onChange={e => onChange(e.target.value === '' ? undefined : e.target.value as MaterialId)}
+          value={currentValue}
+          onChange={e => handleChange(e.target.value)}
         >
           <option value="">n fixe</option>
-          {(Object.keys(MATERIALS) as MaterialId[]).map(id => (
-            <option key={id} value={id}>
-              {MATERIALS[id].label} (n≈{referenceIndex(id).toFixed(3)})
-            </option>
-          ))}
+          <optgroup label="Cauchy (legacy)">
+            {(Object.keys(MATERIALS) as MaterialId[]).map(id => (
+              <option key={id} value={`cauchy:${id}`}>
+                {MATERIALS[id].label} (n≈{referenceIndex(id).toFixed(3)})
+              </option>
+            ))}
+          </optgroup>
+          <optgroup label="Sellmeier Schott">
+            {filtered.map(g => (
+              <option key={g.id} value={`glass:${g.id}`}>
+                {g.id}  nD={g.nD.toFixed(4)}  νD={g.abbeNumber.toFixed(1)}
+              </option>
+            ))}
+          </optgroup>
         </select>
       </div>
+      <input
+        type="text"
+        placeholder="Chercher un verre…"
+        value={search}
+        onChange={e => setSearch(e.target.value)}
+        style={{ fontSize: 11, padding: '2px 6px', borderRadius: 4, border: '1px solid #3a4a5a',
+                 background: '#0d1a24', color: '#c0ccd8', marginTop: 2 }}
+      />
+      {glassId && (
+        <span style={{ fontSize: 10, color: '#60c8ff', paddingLeft: 4 }}>
+          {(() => { const g = GLASS_CATALOG.find(x => x.id === glassId); return g ? `${g.name}  nD=${sellmeierIndex(g.sellmeier, LAMBDA_D).toFixed(4)}  νD=${g.abbeNumber.toFixed(1)}` : glassId })()}
+        </span>
+      )}
+      {/* Diagramme d'Abbe — clic pour sélectionner un verre */}
+      <canvas
+        ref={abbeRef}
+        width={200} height={120}
+        onClick={handleAbbeClick}
+        title="Diagramme d'Abbe — clic pour sélectionner un verre"
+        style={{ cursor: 'crosshair', borderRadius: 4, border: '1px solid #1e2e3e', alignSelf: 'center', width: 200, height: 120 }}
+      />
+      <span style={{ fontSize: 9, color: '#4a6a7a', textAlign: 'center' }}>
+        Diagramme d&apos;Abbe (clic = sélection)
+      </span>
     </div>
   )
 }
@@ -214,26 +411,23 @@ function WavelengthPicker({ wavelengths, onChange }: { wavelengths: number[]; on
 // Element-specific panels
 // ─────────────────────────────────────────────────────────────────────────────
 
-function FlatMirrorPanel({ el, onUpdate }: { el: FlatMirror; onUpdate: () => void }) {
-  function set<K extends 'angle' | 'length'>(key: K, v: number) {
-    if (key === 'angle') el.angle = v * DEG
-    else el.length = v
-    onUpdate()
-  }
+function FlatMirrorPanel({ el, onUpdate, u }: { el: FlatMirror; onUpdate: () => void; u: UnitCtx }) {
   return <>
-    <Slider label="Angle" value={el.angle * RAD} min={-180} max={180} step={0.1} unit="°" onChange={v => set('angle', v)} />
-    <Slider label="Longueur" value={el.length} min={20} max={600} step={1} unit=" px" digits={0} onChange={v => set('length', v)} />
+    <Slider label="Angle" value={el.angle * RAD} min={-180} max={180} step={0.1} unit="°"
+      onChange={v => { el.angle = v * DEG; onUpdate() }} />
+    <Slider label="Longueur" value={u.toD(el.length)} min={u.toD(20)} max={u.toD(600)} step={u.step} unit={u.unit} digits={u.digits}
+      onChange={v => { el.length = u.toI(v); onUpdate() }} />
   </>
 }
 
-function ThinLensPanel({ el, onUpdate }: { el: ThinLens; onUpdate: () => void }) {
+function ThinLensPanel({ el, onUpdate, u }: { el: ThinLens; onUpdate: () => void; u: UnitCtx }) {
   return <>
     <Slider label="Angle axe" value={el.angle * RAD} min={-180} max={180} step={0.1} unit="°"
       onChange={v => { el.angle = v * DEG; onUpdate() }} />
-    <Slider label="Focale f" value={el.focalLength} min={-500} max={500} step={1} unit=" px" digits={0}
-      onChange={v => { if (v === 0) return; el.focalLength = v; onUpdate() }} />
-    <Slider label="Ouverture" value={el.height} min={20} max={400} step={1} unit=" px" digits={0}
-      onChange={v => { el.height = v; onUpdate() }} />
+    <Slider label="Focale f" value={u.toD(el.focalLength)} min={u.toD(-500)} max={u.toD(500)} step={u.step} unit={u.unit} digits={u.digits}
+      onChange={v => { const px = u.toI(v); if (px === 0) return; el.focalLength = px; onUpdate() }} />
+    <Slider label="Ouverture" value={u.toD(el.height)} min={u.toD(20)} max={u.toD(400)} step={u.step} unit={u.unit} digits={u.digits}
+      onChange={v => { el.height = u.toI(v); onUpdate() }} />
     <div className="prop-row">
       <div className="prop-header">
         <span className="prop-label">Type</span>
@@ -245,16 +439,18 @@ function ThinLensPanel({ el, onUpdate }: { el: ThinLens; onUpdate: () => void })
   </>
 }
 
-function BlockPanel({ el, onUpdate }: { el: Block; onUpdate: () => void }) {
+function BlockPanel({ el, onUpdate, u }: { el: Block; onUpdate: () => void; u: UnitCtx }) {
   return <>
     <Slider label="Angle" value={el.angle * RAD} min={-180} max={180} step={0.1} unit="°"
       onChange={v => { el.angle = v * DEG; onUpdate() }} />
-    <Slider label="Largeur" value={el.width} min={10} max={400} step={1} unit=" px" digits={0}
-      onChange={v => { el.width = v; onUpdate() }} />
-    <Slider label="Hauteur" value={el.height} min={10} max={400} step={1} unit=" px" digits={0}
-      onChange={v => { el.height = v; onUpdate() }} />
-    <MaterialSelect value={el.material} onChange={v => { el.material = v; onUpdate() }} />
-    {!el.material && (
+    <Slider label="Largeur" value={u.toD(el.width)} min={u.toD(10)} max={u.toD(400)} step={u.step} unit={u.unit} digits={u.digits}
+      onChange={v => { el.width = u.toI(v); onUpdate() }} />
+    <Slider label="Hauteur" value={u.toD(el.height)} min={u.toD(10)} max={u.toD(400)} step={u.step} unit={u.unit} digits={u.digits}
+      onChange={v => { el.height = u.toI(v); onUpdate() }} />
+    <GlassSelect material={el.material} glassId={el.glassId}
+      onChangeMaterial={v => { el.material = v; onUpdate() }}
+      onChangeGlassId={v => { el.glassId = v; onUpdate() }} />
+    {!el.material && !el.glassId && (
       <Slider label="Indice n" value={el.n} min={1.0} max={2.5} step={0.01} digits={2}
         onChange={v => { el.n = v; onUpdate() }} />
     )}
@@ -263,16 +459,18 @@ function BlockPanel({ el, onUpdate }: { el: Block; onUpdate: () => void }) {
   </>
 }
 
-function PrismPanel({ el, onUpdate }: { el: Prism; onUpdate: () => void }) {
+function PrismPanel({ el, onUpdate, u }: { el: Prism; onUpdate: () => void; u: UnitCtx }) {
   return <>
     <Slider label="Angle" value={el.angle * RAD} min={-180} max={180} step={0.1} unit="°"
       onChange={v => { el.angle = v * DEG; onUpdate() }} />
-    <Slider label="Taille (jambe)" value={el.size} min={30} max={400} step={1} unit=" px" digits={0}
-      onChange={v => { el.size = v; onUpdate() }} />
+    <Slider label="Taille (jambe)" value={u.toD(el.size)} min={u.toD(30)} max={u.toD(400)} step={u.step} unit={u.unit} digits={u.digits}
+      onChange={v => { el.size = u.toI(v); onUpdate() }} />
     <Slider label="Angle apex" value={el.apexAngle * RAD} min={10} max={120} step={0.5} unit="°"
       onChange={v => { el.apexAngle = v * DEG; onUpdate() }} />
-    <MaterialSelect value={el.material} onChange={v => { el.material = v; onUpdate() }} />
-    {!el.material && (
+    <GlassSelect material={el.material} glassId={el.glassId}
+      onChangeMaterial={v => { el.material = v; onUpdate() }}
+      onChangeGlassId={v => { el.glassId = v; onUpdate() }} />
+    {!el.material && !el.glassId && (
       <Slider label="Indice n" value={el.n} min={1.0} max={2.5} step={0.01} digits={2}
         onChange={v => { el.n = v; onUpdate() }} />
     )}
@@ -281,25 +479,27 @@ function PrismPanel({ el, onUpdate }: { el: Prism; onUpdate: () => void }) {
   </>
 }
 
-function ThickLensPanel({ el, onUpdate }: { el: ThickLens; onUpdate: () => void }) {
+function ThickLensPanel({ el, onUpdate, u }: { el: ThickLens; onUpdate: () => void; u: UnitCtx }) {
   const f = el.paraxialFocalLength()
   return <>
     <Slider label="Angle axe" value={el.angle * RAD} min={-180} max={180} step={0.1} unit="°"
       onChange={v => { el.angle = v * DEG; onUpdate() }} />
-    <Slider label="R1 (avant)" value={el.R1} min={20} max={800} step={1} unit=" px" digits={0}
-      onChange={v => { el.R1 = v; onUpdate() }} />
-    <Slider label="R2 (arrière)" value={el.R2} min={20} max={800} step={1} unit=" px" digits={0}
-      onChange={v => { el.R2 = v; onUpdate() }} />
+    <Slider label="R1 (avant)" value={u.toD(el.R1)} min={u.toD(20)} max={u.toD(800)} step={u.step} unit={u.unit} digits={u.digits}
+      onChange={v => { el.R1 = u.toI(v); onUpdate() }} />
+    <Slider label="R2 (arrière)" value={u.toD(el.R2)} min={u.toD(20)} max={u.toD(800)} step={u.step} unit={u.unit} digits={u.digits}
+      onChange={v => { el.R2 = u.toI(v); onUpdate() }} />
     <Slider label="κ1" value={el.kappa1} min={-3} max={2} step={0.05} digits={2}
       onChange={v => { el.kappa1 = v; onUpdate() }} />
     <Slider label="κ2" value={el.kappa2} min={-3} max={2} step={0.05} digits={2}
       onChange={v => { el.kappa2 = v; onUpdate() }} />
-    <Slider label="Épaisseur" value={el.thickness} min={1} max={200} step={1} unit=" px" digits={0}
-      onChange={v => { el.thickness = v; onUpdate() }} />
-    <Slider label="Demi-ouverture" value={el.halfHeight} min={10} max={250} step={1} unit=" px" digits={0}
-      onChange={v => { el.halfHeight = v; onUpdate() }} />
-    <MaterialSelect value={el.material} onChange={v => { el.material = v; onUpdate() }} />
-    {!el.material && (
+    <Slider label="Épaisseur" value={u.toD(el.thickness)} min={u.toD(1)} max={u.toD(200)} step={u.step} unit={u.unit} digits={u.digits}
+      onChange={v => { el.thickness = u.toI(v); onUpdate() }} />
+    <Slider label="Demi-ouverture" value={u.toD(el.halfHeight)} min={u.toD(10)} max={u.toD(250)} step={u.step} unit={u.unit} digits={u.digits}
+      onChange={v => { el.halfHeight = u.toI(v); onUpdate() }} />
+    <GlassSelect material={el.material} glassId={el.glassId}
+      onChangeMaterial={v => { el.material = v; onUpdate() }}
+      onChangeGlassId={v => { el.glassId = v; onUpdate() }} />
+    {!el.material && !el.glassId && (
       <Slider label="Indice n" value={el.n} min={1.0} max={2.5} step={0.01} digits={2}
         onChange={v => { el.n = v; onUpdate() }} />
     )}
@@ -309,14 +509,14 @@ function ThickLensPanel({ el, onUpdate }: { el: ThickLens; onUpdate: () => void 
       <div className="prop-header">
         <span className="prop-label">f paraxiale</span>
         <span className="prop-value" style={{ color: '#60c8ff' }}>
-          {isFinite(f) ? `${f.toFixed(1)} px` : '∞'}
+          {isFinite(f) ? `${u.toD(f).toFixed(u.digits)}${u.unit}` : '∞'}
         </span>
       </div>
     </div>
   </>
 }
 
-function GRINMediumPanel({ el, onUpdate }: { el: GRINElement; onUpdate: () => void }) {
+function GRINMediumPanel({ el, onUpdate, u }: { el: GRINElement; onUpdate: () => void; u: UnitCtx }) {
   // Paramètres de l'alpha selon le profil
   type AlphaCfg = { label: string; min: number; max: number; step: number; digits: number }
   const alphaCfg: Record<GRINProfile, AlphaCfg> = {
@@ -366,10 +566,10 @@ function GRINMediumPanel({ el, onUpdate }: { el: GRINElement; onUpdate: () => vo
       <Slider label="αx (∂n/∂x)" value={el.alpha2} min={-0.003} max={0.003} step={0.00005} digits={5}
         onChange={v => { el.alpha2 = v; onUpdate() }} />
     )}
-    <Slider label="Largeur" value={el.width} min={50} max={900} step={1} unit=" px" digits={0}
-      onChange={v => { el.width = v; onUpdate() }} />
-    <Slider label="Hauteur" value={el.height} min={50} max={700} step={1} unit=" px" digits={0}
-      onChange={v => { el.height = v; onUpdate() }} />
+    <Slider label="Largeur" value={u.toD(el.width)} min={u.toD(50)} max={u.toD(900)} step={u.step} unit={u.unit} digits={u.digits}
+      onChange={v => { el.width = u.toI(v); onUpdate() }} />
+    <Slider label="Hauteur" value={u.toD(el.height)} min={u.toD(50)} max={u.toD(700)} step={u.step} unit={u.unit} digits={u.digits}
+      onChange={v => { el.height = u.toI(v); onUpdate() }} />
     {/* Plage d'indice */}
     <div className="prop-row">
       <div className="prop-header">
@@ -382,7 +582,7 @@ function GRINMediumPanel({ el, onUpdate }: { el: GRINElement; onUpdate: () => vo
   </>
 }
 
-function ConicMirrorPanel({ el, onUpdate }: { el: ConicMirror; onUpdate: () => void }) {
+function ConicMirrorPanel({ el, onUpdate, u }: { el: ConicMirror; onUpdate: () => void; u: UnitCtx }) {
   function kappaLabel(k: number): string {
     if (Math.abs(k) < 0.02)       return 'Sphère (κ=0)'
     if (Math.abs(k + 1) < 0.02)   return 'Parabole (κ=−1)'
@@ -393,12 +593,12 @@ function ConicMirrorPanel({ el, onUpdate }: { el: ConicMirror; onUpdate: () => v
   return <>
     <Slider label="Angle axe" value={el.angle * RAD} min={-180} max={180} step={0.1} unit="°"
       onChange={v => { el.angle = v * DEG; onUpdate() }} />
-    <Slider label="Rayon R" value={el.R} min={30} max={800} step={1} unit=" px" digits={0}
-      onChange={v => { el.R = v; onUpdate() }} />
+    <Slider label="Rayon R" value={u.toD(el.R)} min={u.toD(30)} max={u.toD(800)} step={u.step} unit={u.unit} digits={u.digits}
+      onChange={v => { el.R = u.toI(v); onUpdate() }} />
     <Slider label="κ (conicité)" value={el.kappa} min={-3} max={2} step={0.05} digits={2}
       onChange={v => { el.kappa = v; onUpdate() }} />
-    <Slider label="Demi-ouverture" value={el.halfHeight} min={10} max={250} step={1} unit=" px" digits={0}
-      onChange={v => { el.halfHeight = v; onUpdate() }} />
+    <Slider label="Demi-ouverture" value={u.toD(el.halfHeight)} min={u.toD(10)} max={u.toD(250)} step={u.step} unit={u.unit} digits={u.digits}
+      onChange={v => { el.halfHeight = u.toI(v); onUpdate() }} />
     <div className="prop-row">
       <div className="prop-header">
         <span className="prop-label">Forme</span>
@@ -408,18 +608,18 @@ function ConicMirrorPanel({ el, onUpdate }: { el: ConicMirror; onUpdate: () => v
     <div className="prop-row">
       <div className="prop-header">
         <span className="prop-label">Foyer f</span>
-        <span className="prop-value" style={{ color: '#8bb8f8' }}>{(el.R / 2).toFixed(1)} px</span>
+        <span className="prop-value" style={{ color: '#8bb8f8' }}>{u.toD(el.R / 2).toFixed(u.digits)}{u.unit}</span>
       </div>
     </div>
   </>
 }
 
-function CurvedMirrorPanel({ el, onUpdate }: { el: CurvedMirror; onUpdate: () => void }) {
+function CurvedMirrorPanel({ el, onUpdate, u }: { el: CurvedMirror; onUpdate: () => void; u: UnitCtx }) {
   return <>
     <Slider label="Angle axe" value={el.angle * RAD} min={-180} max={180} step={0.1} unit="°"
       onChange={v => { el.angle = v * DEG; onUpdate() }} />
-    <Slider label="Rayon R" value={el.radius} min={30} max={800} step={1} unit=" px" digits={0}
-      onChange={v => { el.radius = v; onUpdate() }} />
+    <Slider label="Rayon R" value={u.toD(el.radius)} min={u.toD(30)} max={u.toD(800)} step={u.step} unit={u.unit} digits={u.digits}
+      onChange={v => { el.radius = u.toI(v); onUpdate() }} />
     <Slider label="Demi-ouverture" value={el.aperture * RAD} min={5} max={85} step={0.5} unit="°"
       onChange={v => { el.aperture = v * DEG; onUpdate() }} />
     <div className="prop-row">
@@ -428,7 +628,7 @@ function CurvedMirrorPanel({ el, onUpdate }: { el: CurvedMirror; onUpdate: () =>
           onChange={e => { el.concave = e.target.checked; onUpdate() }} />
         <span>Concave</span>
         <span className="prop-value" style={{ marginLeft: 'auto' }}>
-          f = {(el.radius / 2).toFixed(0)} px
+          f = {u.toD(el.radius / 2).toFixed(u.digits)}{u.unit}
         </span>
       </label>
     </div>
@@ -454,14 +654,14 @@ function PolarizationSelect({ value, onChange }: { value: 's' | 'p' | 'unpolariz
   )
 }
 
-function BeamSourcePanel({ src, onUpdate }: { src: BeamSource; onUpdate: () => void }) {
+function BeamSourcePanel({ src, onUpdate, u }: { src: BeamSource; onUpdate: () => void; u: UnitCtx }) {
   return <>
     <Slider label="Angle" value={src.angle * RAD} min={-180} max={180} step={0.1} unit="°"
       onChange={v => { src.angle = v * DEG; onUpdate() }} />
     <Slider label="Nb rayons" value={src.numRays} min={1} max={20} step={1} digits={0}
       onChange={v => { src.numRays = v; onUpdate() }} />
-    <Slider label="Largeur faisceau" value={src.width} min={0} max={250} step={1} unit=" px" digits={0}
-      onChange={v => { src.width = v; onUpdate() }} />
+    <Slider label="Largeur faisceau" value={u.toD(src.width)} min={0} max={u.toD(250)} step={u.step} unit={u.unit} digits={u.digits}
+      onChange={v => { src.width = u.toI(v); onUpdate() }} />
     <WavelengthPicker wavelengths={src.wavelengths} onChange={wl => { src.wavelengths = wl; onUpdate() }} />
     <PolarizationSelect value={src.polarization} onChange={v => { src.polarization = v; onUpdate() }} />
   </>
@@ -484,7 +684,7 @@ function PointSourcePanel({ src, onUpdate }: { src: PointSource; onUpdate: () =>
 // Main panel
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function PropertiesPanel({ scene, selectedId, onUpdate, onDelete }: Props) {
+export function PropertiesPanel({ scene, selectedId, onUpdate, onDelete, useMm, scale }: Props) {
   if (!scene || !selectedId) {
     return (
       <div className="props-panel">
@@ -495,23 +695,25 @@ export function PropertiesPanel({ scene, selectedId, onUpdate, onDelete }: Props
     )
   }
 
+  const u = makeUnitCtx(useMm ?? false, scale ?? 1)
+
   const element = scene.elements.find(e => e.id === selectedId) ?? null
   const source  = scene.sources.find(s => s.id === selectedId) ?? null
 
   function renderElementProps(el: OpticalElement) {
-    if (el instanceof FlatMirror)    return <FlatMirrorPanel    el={el}  onUpdate={onUpdate} />
-    if (el instanceof ThinLens)      return <ThinLensPanel      el={el}  onUpdate={onUpdate} />
-    if (el instanceof Block)         return <BlockPanel         el={el}  onUpdate={onUpdate} />
-    if (el instanceof Prism)         return <PrismPanel         el={el}  onUpdate={onUpdate} />
-    if (el instanceof CurvedMirror)  return <CurvedMirrorPanel  el={el}  onUpdate={onUpdate} />
-    if (el instanceof ThickLens)    return <ThickLensPanel     el={el}  onUpdate={onUpdate} />
-    if (el instanceof ConicMirror)  return <ConicMirrorPanel   el={el}  onUpdate={onUpdate} />
-    if (el instanceof GRINElement)  return <GRINMediumPanel    el={el}  onUpdate={onUpdate} />
+    if (el instanceof FlatMirror)    return <FlatMirrorPanel    el={el}  onUpdate={onUpdate} u={u} />
+    if (el instanceof ThinLens)      return <ThinLensPanel      el={el}  onUpdate={onUpdate} u={u} />
+    if (el instanceof Block)         return <BlockPanel         el={el}  onUpdate={onUpdate} u={u} />
+    if (el instanceof Prism)         return <PrismPanel         el={el}  onUpdate={onUpdate} u={u} />
+    if (el instanceof CurvedMirror)  return <CurvedMirrorPanel  el={el}  onUpdate={onUpdate} u={u} />
+    if (el instanceof ThickLens)     return <ThickLensPanel     el={el}  onUpdate={onUpdate} u={u} />
+    if (el instanceof ConicMirror)   return <ConicMirrorPanel   el={el}  onUpdate={onUpdate} u={u} />
+    if (el instanceof GRINElement)   return <GRINMediumPanel    el={el}  onUpdate={onUpdate} u={u} />
     return null
   }
 
   function renderSourceProps(src: LightSource) {
-    if (src instanceof BeamSource)   return <BeamSourcePanel   src={src} onUpdate={onUpdate} />
+    if (src instanceof BeamSource)   return <BeamSourcePanel   src={src} onUpdate={onUpdate} u={u} />
     if (src instanceof PointSource)  return <PointSourcePanel  src={src} onUpdate={onUpdate} />
     return null
   }
@@ -529,10 +731,10 @@ export function PropertiesPanel({ scene, selectedId, onUpdate, onDelete }: Props
 
       {/* Position */}
       <div className="props-section">Position</div>
-      <Slider label="X" value={target.position.x} min={0} max={3840} step={1} unit=" px" digits={0}
-        onChange={v => { target.position = { ...target.position, x: v }; onUpdate() }} />
-      <Slider label="Y" value={target.position.y} min={0} max={2160} step={1} unit=" px" digits={0}
-        onChange={v => { target.position = { ...target.position, y: v }; onUpdate() }} />
+      <Slider label="X" value={u.toD(target.position.x)} min={u.toD(-2000)} max={u.toD(5000)} step={u.step} unit={u.unit} digits={u.digits}
+        onChange={v => { target.position = { ...target.position, x: u.toI(v) }; onUpdate() }} />
+      <Slider label="Y" value={u.toD(target.position.y)} min={u.toD(-2000)} max={u.toD(4000)} step={u.step} unit={u.unit} digits={u.digits}
+        onChange={v => { target.position = { ...target.position, y: u.toI(v) }; onUpdate() }} />
 
       {/* Type-specific */}
       <div className="props-section">Paramètres</div>

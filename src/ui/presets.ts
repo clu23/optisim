@@ -341,22 +341,22 @@ function achromaticDoublet(w: number, h: number): Scene {
   // SF11 plano-concave : R1=5000 (≈plat), R2=−194, épaisseur=6
   // Les deux lentilles sont collées (vertex2 BK7 = vertex1 SF11).
   const bk7 = new ThickLens({
-    id: 'crown', label: 'BK7 (couronne)',
+    id: 'crown', label: 'N-BK7 (couronne)',
     position: { x: cx, y: cy },
     angle: 0,
     R1: 57, R2: 5000,
     kappa1: 0, kappa2: 0,
     thickness: 8, halfHeight: 45,
-    n: 1.52, material: 'BK7',
+    n: 1.52, glassId: 'N-BK7',
   })
   const sf11 = new ThickLens({
-    id: 'flint', label: 'SF11 (flint)',
+    id: 'flint', label: 'N-SF11 (flint)',
     position: { x: cx + 7, y: cy },
     angle: 0,
     R1: 5000, R2: -194,
     kappa1: 0, kappa2: 0,
     thickness: 6, halfHeight: 45,
-    n: 1.78, material: 'SF11',
+    n: 1.78, glassId: 'N-SF11',
   })
   return {
     elements: [bk7, sf11],

@@ -1,7 +1,7 @@
 import { useRef, useEffect, useState, useCallback } from 'react'
 import type { Scene, Vec2, TraceResult } from './core/types.ts'
 import { traceRay } from './core/tracer.ts'
-import { drawScene, drawHUD, drawOPLOverlay, drawMeasureOverlay, screenToWorld, defaultView } from './renderer/canvas-renderer.ts'
+import { drawScene, drawHUD, drawRuler, drawOPLOverlay, drawMeasureOverlay, screenToWorld, defaultView } from './renderer/canvas-renderer.ts'
 import type { ViewTransform } from './renderer/canvas-renderer.ts'
 import { PropertiesPanel } from './ui/PropertiesPanel.tsx'
 import { Toolbar } from './ui/Toolbar.tsx'
@@ -104,6 +104,7 @@ export default function App() {
   const [selectedId, setSelectedId]       = useState<string | null>(null)
   const [version, setVersion]             = useState(0)  // bump to refresh panel
   const [measureModeUI, setMeasureModeUI] = useState(false)
+  const [useMm, setUseMm]                 = useState(false)
 
   // Keep a ref in sync so RAF / event handlers can read without stale closure
   const selectedIdRef = useRef<string | null>(null)
@@ -154,6 +155,9 @@ export default function App() {
 
       // HUD overlay (screen space)
       drawHUD(ctx, width, height, scale)
+
+      // Règle graduée (screen space)
+      drawRuler(ctx, width, height, viewRef.current, sceneRef.current.metadata.units)
 
       // OPL hover (screen space)
       drawOPLOverlay(ctx, mouseScreenRef.current, mouseWorldRef.current, results, scale)
@@ -393,6 +397,8 @@ export default function App() {
         onLoadPreset={handleLoadPreset}
         onSelectId={id => { setSelectedId(id); bump() }}
         onSceneLoaded={handleSceneLoaded}
+        useMm={useMm}
+        onToggleMm={() => setUseMm(v => !v)}
       />
 
       {/* key=selectedId+version forces React to re-mount panel on target change */}
@@ -402,6 +408,8 @@ export default function App() {
         selectedId={selectedId}
         onUpdate={bump}
         onDelete={deleteSelected}
+        useMm={useMm}
+        scale={sceneRef.current?.metadata.units?.scale ?? 1}
       />
     </div>
   )

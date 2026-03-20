@@ -2,6 +2,7 @@ import type { Vec2, Ray, HitResult, OpticalSurface, OpticalElement, BoundingBox 
 import { intersectRaySegment } from '../intersection.ts'
 import { add, normalize, sub } from '../vector.ts'
 import { materialIndex, type MaterialId } from '../dispersion.ts'
+import { glassIndex } from '../glass-catalog.ts'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PrismSurface — interface réfractante (segment)
@@ -88,6 +89,8 @@ export interface PrismParams {
    * Cauchy : n(λ) varie avec la longueur d'onde → dispersion chromatique.
    */
   material?: MaterialId
+  /** Identifiant dans le catalogue Sellmeier (ex: 'N-BK7'). Prioritaire sur material. */
+  glassId?: string
   /** Coefficient d'absorption Beer-Lambert (px⁻¹). 0 = transparent. */
   absorptionCoeff?: number
   label?: string
@@ -102,10 +105,11 @@ export class Prism implements OpticalElement {
   apexAngle: number
   n: number
   material: MaterialId | undefined
+  glassId: string | undefined
   absorptionCoeff: number
   label: string
 
-  constructor({ id, position, angle, size, apexAngle, n, material, absorptionCoeff = 0, label }: PrismParams) {
+  constructor({ id, position, angle, size, apexAngle, n, material, glassId, absorptionCoeff = 0, label }: PrismParams) {
     this.id = id
     this.position = position
     this.angle = angle
@@ -113,6 +117,7 @@ export class Prism implements OpticalElement {
     this.apexAngle = apexAngle ?? Math.PI / 3
     this.n = n
     this.material = material
+    this.glassId = glassId
     this.absorptionCoeff = absorptionCoeff
     this.label = label ?? 'Prisme'
   }
@@ -162,8 +167,10 @@ export class Prism implements OpticalElement {
     })) as [Vec2, Vec2, Vec2]
   }
 
-  /** Retourne l'indice à la longueur d'onde donnée (Cauchy ou fixe). */
+  /** Retourne l'indice à la longueur d'onde donnée.
+   * Priorité : glassId (Sellmeier) > material (Cauchy) > n (fixe). */
   indexAt(wavelengthNm: number): number {
+    if (this.glassId) { const n = glassIndex(this.glassId, wavelengthNm); if (n !== undefined) return n }
     return this.material ? materialIndex(this.material, wavelengthNm) : this.n
   }
 
