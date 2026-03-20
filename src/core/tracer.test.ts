@@ -210,7 +210,8 @@ describe("V5 — prisme deviation minimale (tracer integre)", () => {
   const prism = new Prism({ id: 'p', position: { x: 0, y: 0 }, angle: 0, size: 200, n: N })
   const scene = makeScene(prism)
   const ray   = makeRay(-300, 0, d_in.x, d_in.y)
-  const result = traceRay(ray, scene)
+  // splitDepth=0 : on teste la géométrie de réfraction pure, sans rayons réfléchis partiels
+  const result = traceRay(ray, scene, 0)
 
   it("produit 3 segments (approche, verre, sortie libre)", () => {
     expect(result.segments).toHaveLength(3)
@@ -265,7 +266,8 @@ describe("tracer — bloc refractant (traversee + decalage lateral)", () => {
   const block = new Block({ id: 'b', position: { x: 0, y: 0 }, angle: 0, width: W, height: 400, n: N })
   const scene = makeScene(block)
   const ray   = makeRay(-300, 0, Math.cos(theta1), -Math.sin(theta1))
-  const result = traceRay(ray, scene)
+  // splitDepth=0 : on teste la géométrie de réfraction pure, sans rayons réfléchis partiels
+  const result = traceRay(ray, scene, 0)
 
   it("produit 3 segments (approche, verre, sortie libre)", () => {
     expect(result.segments).toHaveLength(3)
@@ -331,7 +333,8 @@ describe("tracer — reflexion totale interne (bloc n=1.5)", () => {
   // Origine choisie pour que l'entree sur la face gauche soit dans [−100, 100]
   // y_entry = 90 − (100/cos60°)·sin60° = 90 − 200·(√3/2) ≈ 90 − 173 = −83 ✓
   const ray   = makeRay(-200, 90, Math.cos(theta1), -Math.sin(theta1))
-  const result = traceRay(ray, scene)
+  // splitDepth=0 : on teste la géométrie TIR pure, sans rayons réfléchis partiels à l'entrée/sortie
+  const result = traceRay(ray, scene, 0)
 
   it("angle critique = arcsin(1/n)", () => {
     expect(Math.abs(theta_c - Math.asin(1 / N))).toBeLessThan(EPS_ANGLE)

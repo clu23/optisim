@@ -429,6 +429,25 @@ function CurvedMirrorPanel({ el, onUpdate }: { el: CurvedMirror; onUpdate: () =>
   </>
 }
 
+function PolarizationSelect({ value, onChange }: { value: 's' | 'p' | 'unpolarized'; onChange: (v: 's' | 'p' | 'unpolarized') => void }) {
+  return (
+    <div className="prop-row">
+      <div className="prop-header">
+        <span className="prop-label">Polarisation</span>
+        <select
+          className="prop-material-select"
+          value={value}
+          onChange={e => onChange(e.target.value as 's' | 'p' | 'unpolarized')}
+        >
+          <option value="unpolarized">Non polarisé</option>
+          <option value="s">s (TE — ⊥ plan d'incidence)</option>
+          <option value="p">p (TM — ∥ plan d'incidence)</option>
+        </select>
+      </div>
+    </div>
+  )
+}
+
 function BeamSourcePanel({ src, onUpdate }: { src: BeamSource; onUpdate: () => void }) {
   return <>
     <Slider label="Angle" value={src.angle * RAD} min={-180} max={180} step={0.1} unit="°"
@@ -438,6 +457,7 @@ function BeamSourcePanel({ src, onUpdate }: { src: BeamSource; onUpdate: () => v
     <Slider label="Largeur faisceau" value={src.width} min={0} max={250} step={1} unit=" px" digits={0}
       onChange={v => { src.width = v; onUpdate() }} />
     <WavelengthPicker wavelengths={src.wavelengths} onChange={wl => { src.wavelengths = wl; onUpdate() }} />
+    <PolarizationSelect value={src.polarization} onChange={v => { src.polarization = v; onUpdate() }} />
   </>
 }
 
@@ -450,6 +470,7 @@ function PointSourcePanel({ src, onUpdate }: { src: PointSource; onUpdate: () =>
     <Slider label="Ouverture angulaire" value={src.spreadAngle * RAD} min={5} max={360} step={1} unit="°" digits={0}
       onChange={v => { src.spreadAngle = v * DEG; onUpdate() }} />
     <WavelengthPicker wavelengths={src.wavelengths} onChange={wl => { src.wavelengths = wl; onUpdate() }} />
+    <PolarizationSelect value={src.polarization} onChange={v => { src.polarization = v; onUpdate() }} />
   </>
 }
 

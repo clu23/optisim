@@ -76,6 +76,8 @@ export interface LightSource {
   position: Vec2;
   angle: number;          // Degrés
   wavelengths: number[];  // Liste de longueurs d'onde (nm)
+  /** Polarisation initiale des rayons émis. Défaut : 'unpolarized'. */
+  polarization: 's' | 'p' | 'unpolarized';
   generateRays(): Ray[];
 }
 

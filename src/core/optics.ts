@@ -4,6 +4,9 @@ import { dot, add, scale, normalize } from './vector.ts'
 // Réexporte reflect depuis vector (loi de la réflexion : r⃗ = d⃗ − 2(d⃗·n⃗)n⃗)
 export { reflect } from './vector.ts'
 
+// Réexporte les fonctions de Fresnel (Phase 5)
+export { fresnelCoefficients, fresnelReflectance, fresnelTransmittance, brewsterAngle } from './fresnel.ts'
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Réfraction vectorielle — Loi de Snell-Descartes
 //
@@ -30,23 +33,6 @@ export function refract(d: Vec2, n: Vec2, n1: number, n2: number): Vec2 | null {
 
   // t⃗ = ratio·d⃗ + (ratio·cosθ₁ − cosθ₂)·n⃗
   return normalize(add(scale(d, ratio), scale(n, ratio * cosI - cosT)))
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Réflectance de Fresnel — Placeholder Phase 5
-//
-// Retourne 0 (toute l'énergie est transmise) jusqu'à l'implémentation complète
-// des coefficients r_s, r_p en phase 5.
-//
-// Signature finale : fresnelReflectance(n1, n2, cosI, polarization)
-// ─────────────────────────────────────────────────────────────────────────────
-export function fresnelReflectance(
-  _n1: number,
-  _n2: number,
-  _cosI: number,
-): number {
-  // Phase 5 : R_s = |r_s|², R_p = |r_p|², R = (R_s + R_p) / 2
-  return 0
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

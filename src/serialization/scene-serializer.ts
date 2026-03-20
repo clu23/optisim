@@ -34,9 +34,11 @@ type ElementJSON =
   | { type: 'conic-mirror'; id: string; label: string; position: { x: number; y: number }; angle: number; R: number; kappa: number; halfHeight: number }
   | { type: 'grin'; id: string; label: string; position: { x: number; y: number }; angle: number; width: number; height: number; profile: GRINProfile; n0: number; alpha: number; alpha2?: number }
 
+type Polarization = 's' | 'p' | 'unpolarized'
+
 type SourceJSON =
-  | { type: 'beam';  id: string; position: { x: number; y: number }; angle: number; wavelengths: number[]; numRays: number; width: number }
-  | { type: 'point'; id: string; position: { x: number; y: number }; angle: number; wavelengths: number[]; numRays: number; spreadAngle: number }
+  | { type: 'beam';  id: string; position: { x: number; y: number }; angle: number; wavelengths: number[]; numRays: number; width: number; polarization?: Polarization }
+  | { type: 'point'; id: string; position: { x: number; y: number }; angle: number; wavelengths: number[]; numRays: number; spreadAngle: number; polarization?: Polarization }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Serialize
@@ -73,10 +75,10 @@ export function serializeScene(scene: Scene): SceneJSON {
 
   const sources: SourceJSON[] = scene.sources.map(src => {
     if (src instanceof BeamSource) {
-      return { type: 'beam', id: src.id, position: src.position, angle: src.angle, wavelengths: src.wavelengths, numRays: src.numRays, width: src.width }
+      return { type: 'beam', id: src.id, position: src.position, angle: src.angle, wavelengths: src.wavelengths, numRays: src.numRays, width: src.width, ...(src.polarization !== 'unpolarized' && { polarization: src.polarization }) }
     }
     if (src instanceof PointSource) {
-      return { type: 'point', id: src.id, position: src.position, angle: src.angle, wavelengths: src.wavelengths, numRays: src.numRays, spreadAngle: src.spreadAngle }
+      return { type: 'point', id: src.id, position: src.position, angle: src.angle, wavelengths: src.wavelengths, numRays: src.numRays, spreadAngle: src.spreadAngle, ...(src.polarization !== 'unpolarized' && { polarization: src.polarization }) }
     }
     throw new Error(`serializeScene: type de source inconnu "${src.type}"`)
   })
@@ -109,8 +111,8 @@ export function deserializeScene(json: SceneJSON): Scene {
 
   const sources = json.sources.map(src => {
     switch (src.type) {
-      case 'beam':  return new BeamSource(src)
-      case 'point': return new PointSource(src)
+      case 'beam':  return new BeamSource({ ...src, polarization: src.polarization ?? 'unpolarized' })
+      case 'point': return new PointSource({ ...src, polarization: src.polarization ?? 'unpolarized' })
       default: throw new Error(`deserializeScene: type de source inconnu "${(src as { type: string }).type}"`)
     }
   })

@@ -98,18 +98,20 @@ function drawGrid(
 // ─────────────────────────────────────────────────────────────────────────────
 
 function drawRays(ctx: CanvasRenderingContext2D, results: TraceResult[], scale: number): void {
-  const lw = 1.5 / scale
+  const lwBase = 1.5 / scale
 
   for (const result of results) {
     for (const seg of result.segments) {
-      const color = wavelengthToColor(seg.wavelength, seg.intensity * 0.9)
+      const intensity = Math.max(0, Math.min(1, seg.intensity))
+      const color = wavelengthToColor(seg.wavelength, intensity * 0.9)
 
       ctx.save()
       ctx.strokeStyle = color
-      ctx.lineWidth = lw
+      // Épaisseur proportionnelle à l'intensité (min 30% pour rester visible)
+      ctx.lineWidth = lwBase * Math.max(0.3, intensity)
       ctx.shadowColor = color
-      ctx.shadowBlur = 5 / scale
-      ctx.globalAlpha = Math.max(0.1, seg.intensity)
+      ctx.shadowBlur = (4 * intensity + 1) / scale
+      ctx.globalAlpha = Math.max(0.05, intensity)
 
       if (seg.curvePoints && seg.curvePoints.length > 1) {
         ctx.beginPath()

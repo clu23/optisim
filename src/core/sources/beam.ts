@@ -23,6 +23,8 @@ export interface BeamSourceParams {
   numRays?: number
   /** Largeur du faisceau en pixels (spread perpendiculaire). Défaut : 0. */
   width?: number
+  /** Polarisation des rayons émis. Défaut : 'unpolarized'. */
+  polarization?: 's' | 'p' | 'unpolarized'
 }
 
 export class BeamSource implements LightSource {
@@ -33,14 +35,16 @@ export class BeamSource implements LightSource {
   wavelengths: number[]
   numRays: number
   width: number
+  polarization: 's' | 'p' | 'unpolarized'
 
-  constructor({ id, position, angle, wavelengths, numRays = 1, width = 0 }: BeamSourceParams) {
+  constructor({ id, position, angle, wavelengths, numRays = 1, width = 0, polarization = 'unpolarized' }: BeamSourceParams) {
     this.id = id
     this.position = position
     this.angle = angle
     this.wavelengths = wavelengths
     this.numRays = numRays
     this.width = width
+    this.polarization = polarization
   }
 
   generateRays(): Ray[] {
@@ -60,7 +64,7 @@ export class BeamSource implements LightSource {
           x: this.position.x + perp.x * t,
           y: this.position.y + perp.y * t,
         }
-        rays.push({ origin, direction: dir, wavelength, intensity: 1 })
+        rays.push({ origin, direction: dir, wavelength, intensity: 1, polarization: this.polarization })
       }
     }
 

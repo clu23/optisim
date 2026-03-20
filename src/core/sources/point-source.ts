@@ -17,6 +17,8 @@ export interface PointSourceParams {
   numRays?: number
   /** Demi-angle total du faisceau (radians). Défaut : 2π (omnidirectionnel). */
   spreadAngle?: number
+  /** Polarisation des rayons émis. Défaut : 'unpolarized'. */
+  polarization?: 's' | 'p' | 'unpolarized'
 }
 
 export class PointSource implements LightSource {
@@ -27,10 +29,11 @@ export class PointSource implements LightSource {
   wavelengths: number[]
   numRays: number
   spreadAngle: number
+  polarization: 's' | 'p' | 'unpolarized'
 
   constructor({
     id, position, angle, wavelengths,
-    numRays = 16, spreadAngle = 2 * Math.PI,
+    numRays = 16, spreadAngle = 2 * Math.PI, polarization = 'unpolarized',
   }: PointSourceParams) {
     this.id = id
     this.position = position
@@ -38,6 +41,7 @@ export class PointSource implements LightSource {
     this.wavelengths = wavelengths
     this.numRays = numRays
     this.spreadAngle = spreadAngle
+    this.polarization = polarization
   }
 
   generateRays(): Ray[] {
@@ -51,7 +55,7 @@ export class PointSource implements LightSource {
           : 0
         const a = this.angle + t * this.spreadAngle
         const dir: Vec2 = { x: Math.cos(a), y: Math.sin(a) }
-        rays.push({ origin, direction: dir, wavelength, intensity: 1 })
+        rays.push({ origin, direction: dir, wavelength, intensity: 1, polarization: this.polarization })
       }
     }
     return rays
