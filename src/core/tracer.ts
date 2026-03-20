@@ -4,6 +4,7 @@ import { reflect, refract } from './optics.ts'
 import { dot } from './vector.ts'
 import { fresnelCoefficients } from './fresnel.ts'
 import { integrateGRIN, buildGRINSegment } from './tracer-grin.ts'
+import { beerLambert, getAbsorptionCoeff } from './absorption.ts'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constantes
@@ -308,6 +309,21 @@ export function traceRay(ray: Ray, scene: Scene, splitDepth = MAX_SPLIT_DEPTH): 
         y: closest.point.y - 1e-6 * current.direction.y,
       }
       const isInsideElement = element.containsPoint(behindPoint)
+
+      // ── Beer-Lambert : atténuation dans le milieu traversé ─────────────────
+      // On applique l'absorption quand on est en train de QUITTER le milieu
+      // (isInsideElement = true). La distance est closest.t = distance parcourue
+      // depuis la dernière surface (entrée dans l'élément).
+      if (isInsideElement) {
+        const alpha = getAbsorptionCoeff(element)
+        if (alpha > 0) {
+          const attenuated = beerLambert(current.intensity, alpha, closest.t)
+          // Mise à jour rétroactive du dernier segment poussé (intensité en sortie)
+          segments[segments.length - 1].intensity = attenuated
+          current = { ...current, intensity: attenuated }
+        }
+      }
+
       const nMaterial = closestSurface.getRefractiveIndex(current.wavelength)
       const n1 = isInsideElement ? nMaterial : 1
       const n2 = isInsideElement ? 1 : nMaterial

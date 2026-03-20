@@ -88,6 +88,8 @@ export interface PrismParams {
    * Cauchy : n(λ) varie avec la longueur d'onde → dispersion chromatique.
    */
   material?: MaterialId
+  /** Coefficient d'absorption Beer-Lambert (px⁻¹). 0 = transparent. */
+  absorptionCoeff?: number
   label?: string
 }
 
@@ -100,9 +102,10 @@ export class Prism implements OpticalElement {
   apexAngle: number
   n: number
   material: MaterialId | undefined
+  absorptionCoeff: number
   label: string
 
-  constructor({ id, position, angle, size, apexAngle, n, material, label }: PrismParams) {
+  constructor({ id, position, angle, size, apexAngle, n, material, absorptionCoeff = 0, label }: PrismParams) {
     this.id = id
     this.position = position
     this.angle = angle
@@ -110,6 +113,7 @@ export class Prism implements OpticalElement {
     this.apexAngle = apexAngle ?? Math.PI / 3
     this.n = n
     this.material = material
+    this.absorptionCoeff = absorptionCoeff
     this.label = label ?? 'Prisme'
   }
 

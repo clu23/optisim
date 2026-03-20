@@ -258,6 +258,8 @@ function BlockPanel({ el, onUpdate }: { el: Block; onUpdate: () => void }) {
       <Slider label="Indice n" value={el.n} min={1.0} max={2.5} step={0.01} digits={2}
         onChange={v => { el.n = v; onUpdate() }} />
     )}
+    <Slider label="Absorption α" value={el.absorptionCoeff} min={0} max={0.05} step={0.0005} digits={4} unit=" px⁻¹"
+      onChange={v => { el.absorptionCoeff = v; onUpdate() }} />
   </>
 }
 
@@ -274,6 +276,8 @@ function PrismPanel({ el, onUpdate }: { el: Prism; onUpdate: () => void }) {
       <Slider label="Indice n" value={el.n} min={1.0} max={2.5} step={0.01} digits={2}
         onChange={v => { el.n = v; onUpdate() }} />
     )}
+    <Slider label="Absorption α" value={el.absorptionCoeff} min={0} max={0.05} step={0.0005} digits={4} unit=" px⁻¹"
+      onChange={v => { el.absorptionCoeff = v; onUpdate() }} />
   </>
 }
 
@@ -299,6 +303,8 @@ function ThickLensPanel({ el, onUpdate }: { el: ThickLens; onUpdate: () => void 
       <Slider label="Indice n" value={el.n} min={1.0} max={2.5} step={0.01} digits={2}
         onChange={v => { el.n = v; onUpdate() }} />
     )}
+    <Slider label="Absorption α" value={el.absorptionCoeff} min={0} max={0.05} step={0.0005} digits={4} unit=" px⁻¹"
+      onChange={v => { el.absorptionCoeff = v; onUpdate() }} />
     <div className="prop-row">
       <div className="prop-header">
         <span className="prop-label">f paraxiale</span>

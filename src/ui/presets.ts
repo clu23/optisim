@@ -4,6 +4,8 @@ import { ThinLens } from '../core/elements/thin-lens.ts'
 import { Block } from '../core/elements/block.ts'
 import { Prism } from '../core/elements/prism.ts'
 import { CurvedMirror } from '../core/elements/curved-mirror.ts'
+import { ConicMirror } from '../core/elements/conic-mirror.ts'
+import { ThickLens } from '../core/elements/thick-lens.ts'
 import { GRINElement } from '../core/elements/grin-medium.ts'
 import { BeamSource } from '../core/sources/beam.ts'
 import { PointSource } from '../core/sources/point-source.ts'
@@ -259,6 +261,120 @@ function brewsterAngleDemo(w: number, h: number): Scene {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+function newtonTelescope(w: number, h: number): Scene {
+  const cx = w / 2, cy = h / 2
+  // Primaire parabolique (κ=−1) : vertex à cx+200, faces vers la gauche (angle=π)
+  // Focale primaire f₁ = R/2 = 180 px → foyer F₁ à cx+200−180 = cx+20
+  // Secondaire miroir plan à 45° (angle=3π/4) juste avant F₁, à cx+40
+  // → redirige vers le bas les rayons convergeants (direction −x → direction +y)
+  const primary = new ConicMirror({
+    id: 'primary', label: 'Primaire (parabolique)',
+    position: { x: cx + 200, y: cy },
+    angle: Math.PI,
+    R: 360, kappa: -1, halfHeight: 90,
+  })
+  const secondary = new FlatMirror({
+    id: 'secondary', label: 'Secondaire (plan 45°)',
+    position: { x: cx + 45, y: cy },
+    angle: 3 * Math.PI / 4,
+    length: 44,
+  })
+  return {
+    elements: [primary, secondary],
+    sources: [
+      new BeamSource({
+        id: 'beam-1', position: { x: cx - 230, y: cy },
+        angle: 0, wavelengths: MONO, numRays: 7, width: 160,
+      }),
+    ],
+    metadata: {
+      name: 'Télescope de Newton',
+      description: 'Primaire parabolique (κ=−1, R=360, f=180 px) + miroir secondaire plan à 45°. Foyer image à côté du tube.',
+    },
+  }
+}
+
+function cassegrainTelescope(w: number, h: number): Scene {
+  const cx = w / 2, cy = h / 2
+  // Primaire parabolique concave : vertex à cx+280, faces gauche, R=400, f₁=200
+  // Foyer F₁ primaire à cx+280−200 = cx+80
+  // Secondaire convexe (CurvedMirror concave=false) : positionné à cx+130,
+  // faces droite (angle=0 → axis vers +x, normal vers les rayons arrivant par la gauche)
+  // Le secondaire est avant F₁ → il intercepte le faisceau convergeant
+  // et le renvoie vers la droite, à travers l'orifice central du primaire.
+  const primary = new ConicMirror({
+    id: 'primary', label: 'Primaire (parabolique)',
+    position: { x: cx + 280, y: cy },
+    angle: Math.PI,
+    R: 400, kappa: -1, halfHeight: 110,
+  })
+  const secondary = new CurvedMirror({
+    id: 'secondary', label: 'Secondaire (convexe)',
+    position: { x: cx + 130, y: cy },
+    angle: 0,     // faces vers +x (vers les rayons venant de la droite après réflexion primaire)
+    radius: 200,
+    aperture: 0.25,
+    concave: false,  // miroir convexe
+  })
+  return {
+    elements: [primary, secondary],
+    sources: [
+      new BeamSource({
+        id: 'beam-1', position: { x: cx - 250, y: cy },
+        angle: 0, wavelengths: MONO, numRays: 7, width: 180,
+      }),
+    ],
+    metadata: {
+      name: 'Télescope de Cassegrain',
+      description: 'Primaire parabolique (R=400) + secondaire convexe. Le faisceau convergeant est renvoyé vers la droite à travers l\'orifice du primaire.',
+    },
+  }
+}
+
+function achromaticDoublet(w: number, h: number): Scene {
+  const cx = w / 2, cy = h / 2
+  // Doublet de Fraunhofer : couronne BK7 (f₁≈+110) + flint SF11 (f₂≈−247)
+  // Condition achromatique : φ₁/V₁ + φ₂/V₂ = 0
+  // V_BK7 ≈ 63, V_SF11 ≈ 28 → f_total ≈ 200 px
+  //
+  // BK7  plano-convexe : R1=57, R2=5000 (≈plat), épaisseur=8
+  // SF11 plano-concave : R1=5000 (≈plat), R2=−194, épaisseur=6
+  // Les deux lentilles sont collées (vertex2 BK7 = vertex1 SF11).
+  const bk7 = new ThickLens({
+    id: 'crown', label: 'BK7 (couronne)',
+    position: { x: cx, y: cy },
+    angle: 0,
+    R1: 57, R2: 5000,
+    kappa1: 0, kappa2: 0,
+    thickness: 8, halfHeight: 45,
+    n: 1.52, material: 'BK7',
+  })
+  const sf11 = new ThickLens({
+    id: 'flint', label: 'SF11 (flint)',
+    position: { x: cx + 7, y: cy },
+    angle: 0,
+    R1: 5000, R2: -194,
+    kappa1: 0, kappa2: 0,
+    thickness: 6, halfHeight: 45,
+    n: 1.78, material: 'SF11',
+  })
+  return {
+    elements: [bk7, sf11],
+    sources: [
+      new BeamSource({
+        id: 'beam-1', position: { x: cx - 240, y: cy },
+        angle: 0, wavelengths: WHITE, numRays: 5, width: 70,
+      }),
+    ],
+    metadata: {
+      name: 'Doublet achromatique',
+      description: 'BK7 (couronne) + SF11 (flint) collés. Condition de Fraunhofer : φ₁/V₁ + φ₂/V₂ = 0, f_total ≈ 200 px. Aberration chromatique réduite.',
+    },
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export const PRESETS: Preset[] = [
   { id: 'prism',      label: 'Dispersion — Prisme',       make: prismDispersion },
   { id: 'diamond',    label: 'Dispersion — Diamant',      make: diamondDispersion },
@@ -270,4 +386,7 @@ export const PRESETS: Preset[] = [
   { id: 'grin-fiber', label: 'Fibre GRIN',                 make: grinFiber },
   { id: 'mirage',     label: 'Mirage atmosphérique',       make: atmosphericMirage },
   { id: 'brewster',   label: 'Angle de Brewster',          make: brewsterAngleDemo },
+  { id: 'newton',     label: 'Télescope de Newton',        make: newtonTelescope },
+  { id: 'cassegrain', label: 'Télescope de Cassegrain',    make: cassegrainTelescope },
+  { id: 'achromat',   label: 'Doublet achromatique',       make: achromaticDoublet },
 ]

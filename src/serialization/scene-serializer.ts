@@ -27,10 +27,10 @@ export interface SceneJSON {
 type ElementJSON =
   | { type: 'flat-mirror';    id: string; label: string; position: { x: number; y: number }; angle: number; length: number }
   | { type: 'thin-lens';      id: string; label: string; position: { x: number; y: number }; angle: number; focalLength: number; height: number }
-  | { type: 'block';          id: string; label: string; position: { x: number; y: number }; angle: number; width: number; height: number; n: number; material?: MaterialId }
-  | { type: 'prism';          id: string; label: string; position: { x: number; y: number }; angle: number; size: number; apexAngle?: number; n: number; material?: MaterialId }
+  | { type: 'block';          id: string; label: string; position: { x: number; y: number }; angle: number; width: number; height: number; n: number; material?: MaterialId; absorptionCoeff?: number }
+  | { type: 'prism';          id: string; label: string; position: { x: number; y: number }; angle: number; size: number; apexAngle?: number; n: number; material?: MaterialId; absorptionCoeff?: number }
   | { type: 'curved-mirror';  id: string; label: string; position: { x: number; y: number }; angle: number; radius: number; aperture: number; concave: boolean }
-  | { type: 'thick-lens';    id: string; label: string; position: { x: number; y: number }; angle: number; R1: number; R2: number; kappa1: number; kappa2: number; thickness: number; halfHeight: number; n: number; material?: MaterialId }
+  | { type: 'thick-lens';    id: string; label: string; position: { x: number; y: number }; angle: number; R1: number; R2: number; kappa1: number; kappa2: number; thickness: number; halfHeight: number; n: number; material?: MaterialId; absorptionCoeff?: number }
   | { type: 'conic-mirror'; id: string; label: string; position: { x: number; y: number }; angle: number; R: number; kappa: number; halfHeight: number }
   | { type: 'grin'; id: string; label: string; position: { x: number; y: number }; angle: number; width: number; height: number; profile: GRINProfile; n0: number; alpha: number; alpha2?: number }
 
@@ -53,16 +53,16 @@ export function serializeScene(scene: Scene): SceneJSON {
       return { type: 'thin-lens', id: el.id, label: el.label, position: el.position, angle: el.angle, focalLength: el.focalLength, height: el.height }
     }
     if (el instanceof Block) {
-      return { type: 'block', id: el.id, label: el.label, position: el.position, angle: el.angle, width: el.width, height: el.height, n: el.n, ...(el.material && { material: el.material }) }
+      return { type: 'block', id: el.id, label: el.label, position: el.position, angle: el.angle, width: el.width, height: el.height, n: el.n, ...(el.material && { material: el.material }), ...(el.absorptionCoeff > 0 && { absorptionCoeff: el.absorptionCoeff }) }
     }
     if (el instanceof Prism) {
-      return { type: 'prism', id: el.id, label: el.label, position: el.position, angle: el.angle, size: el.size, apexAngle: el.apexAngle, n: el.n, ...(el.material && { material: el.material }) }
+      return { type: 'prism', id: el.id, label: el.label, position: el.position, angle: el.angle, size: el.size, apexAngle: el.apexAngle, n: el.n, ...(el.material && { material: el.material }), ...(el.absorptionCoeff > 0 && { absorptionCoeff: el.absorptionCoeff }) }
     }
     if (el instanceof CurvedMirror) {
       return { type: 'curved-mirror', id: el.id, label: el.label, position: el.position, angle: el.angle, radius: el.radius, aperture: el.aperture, concave: el.concave }
     }
     if (el instanceof ThickLens) {
-      return { type: 'thick-lens', id: el.id, label: el.label, position: el.position, angle: el.angle, R1: el.R1, R2: el.R2, kappa1: el.kappa1, kappa2: el.kappa2, thickness: el.thickness, halfHeight: el.halfHeight, n: el.n, ...(el.material && { material: el.material }) }
+      return { type: 'thick-lens', id: el.id, label: el.label, position: el.position, angle: el.angle, R1: el.R1, R2: el.R2, kappa1: el.kappa1, kappa2: el.kappa2, thickness: el.thickness, halfHeight: el.halfHeight, n: el.n, ...(el.material && { material: el.material }), ...(el.absorptionCoeff > 0 && { absorptionCoeff: el.absorptionCoeff }) }
     }
     if (el instanceof ConicMirror) {
       return { type: 'conic-mirror', id: el.id, label: el.label, position: el.position, angle: el.angle, R: el.R, kappa: el.kappa, halfHeight: el.halfHeight }
@@ -99,10 +99,10 @@ export function deserializeScene(json: SceneJSON): Scene {
     switch (el.type) {
       case 'flat-mirror':   return new FlatMirror(el)
       case 'thin-lens':     return new ThinLens(el)
-      case 'block':         return new Block({ ...el, material: el.material })
-      case 'prism':         return new Prism({ ...el, apexAngle: el.apexAngle, material: el.material })
+      case 'block':         return new Block({ ...el, material: el.material, absorptionCoeff: el.absorptionCoeff ?? 0 })
+      case 'prism':         return new Prism({ ...el, apexAngle: el.apexAngle, material: el.material, absorptionCoeff: el.absorptionCoeff ?? 0 })
       case 'curved-mirror': return new CurvedMirror(el)
-      case 'thick-lens':    return new ThickLens(el)
+      case 'thick-lens':    return new ThickLens({ ...el, absorptionCoeff: el.absorptionCoeff ?? 0 })
       case 'conic-mirror':  return new ConicMirror(el)
       case 'grin':          return new GRINElement({ ...el, alpha2: el.alpha2 ?? 0 })
       default: throw new Error(`deserializeScene: type d'élément inconnu "${(el as { type: string }).type}"`)

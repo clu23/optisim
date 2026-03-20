@@ -466,25 +466,25 @@ I(s) = I₀ × exp(-α × s)
 
 ### Phase 5 — Fresnel et énergie
 
-- [ ] Coefficients de Fresnel (R_s, R_p, T)
-- [ ] Propagation de l'intensité le long des rayons
-- [ ] Rendu de l'intensité (épaisseur ou opacité du rayon)
-- [ ] Angle de Brewster visible
-- [ ] Choix de polarisation sur les sources (s, p, non polarisé)
-- [ ] Rayons réfléchis partiels (split du rayon aux interfaces)
+- [x] Coefficients de Fresnel (R_s, R_p, T)
+- [x] Propagation de l'intensité le long des rayons
+- [x] Rendu de l'intensité (épaisseur ou opacité du rayon)
+- [x] Angle de Brewster visible
+- [x] Choix de polarisation sur les sources (s, p, non polarisé)
+- [x] Rayons réfléchis partiels (split du rayon aux interfaces)
 
 **Validation :**
-- [ ] Test : Brewster — R_p = 0 à l'angle attendu
-- [ ] Test : incidence normale — R = ((n₁-n₂)/(n₁+n₂))²
-- [ ] Test : conservation de l'énergie (R + T = 1)
+- [x] Test : Brewster — R_p = 0 à l'angle attendu
+- [x] Test : incidence normale — R = ((n₁-n₂)/(n₁+n₂))²
+- [x] Test : conservation de l'énergie (R + T = 1)
 
 ### Phase 6 — Enrichissements
 
-- [ ] Calcul et affichage du chemin optique
-- [ ] Absorption Beer-Lambert (coefficient α par milieu)
-- [ ] Annotation des foyers, plans principaux
-- [ ] Systèmes prédéfinis : télescope Newton, Cassegrain, doublet achromat
-- [ ] Mode mesure (distances, angles affichés)
+- [x] Calcul et affichage du chemin optique (OPL au survol des rayons)
+- [x] Absorption Beer-Lambert (coefficient α par milieu : Bloc, Prisme, Lentille épaisse)
+- [x] Annotation des foyers et plans principaux (F, F', H, H' pour les lentilles épaisses)
+- [x] Systèmes prédéfinis : télescope Newton, Cassegrain, doublet achromatique
+- [x] Mode mesure (touche M : distance + angle entre deux points cliqués)
 
 ---
 

@@ -1,7 +1,7 @@
 import { useRef, useEffect, useState, useCallback } from 'react'
 import type { Scene, Vec2, TraceResult } from './core/types.ts'
 import { traceRay } from './core/tracer.ts'
-import { drawScene, drawHUD, screenToWorld, defaultView } from './renderer/canvas-renderer.ts'
+import { drawScene, drawHUD, drawOPLOverlay, drawMeasureOverlay, screenToWorld, defaultView } from './renderer/canvas-renderer.ts'
 import type { ViewTransform } from './renderer/canvas-renderer.ts'
 import { PropertiesPanel } from './ui/PropertiesPanel.tsx'
 import { Toolbar } from './ui/Toolbar.tsx'
@@ -89,16 +89,21 @@ interface Pan {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const canvasRef  = useRef<HTMLCanvasElement>(null)
-  const sceneRef   = useRef<Scene | null>(null)
-  const dragRef    = useRef<Drag | null>(null)
-  const panRef     = useRef<Pan | null>(null)
-  const rafRef     = useRef(0)
-  const viewRef    = useRef<ViewTransform>(defaultView())
+  const canvasRef       = useRef<HTMLCanvasElement>(null)
+  const sceneRef        = useRef<Scene | null>(null)
+  const dragRef         = useRef<Drag | null>(null)
+  const panRef          = useRef<Pan | null>(null)
+  const rafRef          = useRef(0)
+  const viewRef         = useRef<ViewTransform>(defaultView())
+  const mouseWorldRef   = useRef<Vec2 | null>(null)
+  const mouseScreenRef  = useRef<Vec2 | null>(null)
+  const measureModeRef  = useRef(false)
+  const measurePtsRef   = useRef<Vec2[]>([])
 
   // React state — drives UI re-renders (panel + toolbar)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [version, setVersion]       = useState(0)  // bump to refresh panel
+  const [selectedId, setSelectedId]       = useState<string | null>(null)
+  const [version, setVersion]             = useState(0)  // bump to refresh panel
+  const [measureModeUI, setMeasureModeUI] = useState(false)
 
   // Keep a ref in sync so RAF / event handlers can read without stale closure
   const selectedIdRef = useRef<string | null>(null)
@@ -150,6 +155,12 @@ export default function App() {
       // HUD overlay (screen space)
       drawHUD(ctx, width, height, scale)
 
+      // OPL hover (screen space)
+      drawOPLOverlay(ctx, mouseScreenRef.current, mouseWorldRef.current, results, scale)
+
+      // Measure mode overlay (screen space)
+      drawMeasureOverlay(ctx, measurePtsRef.current, viewRef.current, measureModeRef.current)
+
       rafRef.current = requestAnimationFrame(loop)
     }
     rafRef.current = requestAnimationFrame(loop)
@@ -196,12 +207,22 @@ export default function App() {
     return () => canvas.removeEventListener('wheel', onWheel)
   }, [bump])
 
-  // ── Delete key ─────────────────────────────────────────────────────────────
+  // ── Delete key + M (mode mesure) ───────────────────────────────────────────
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key !== 'Delete' && e.key !== 'Backspace') return
       if ((e.target as HTMLElement).tagName === 'INPUT') return
-      deleteSelected()
+
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        deleteSelected()
+        return
+      }
+
+      if (e.key === 'm' || e.key === 'M') {
+        const next = !measureModeRef.current
+        measureModeRef.current = next
+        if (!next) measurePtsRef.current = []   // reset à la désactivation
+        setMeasureModeUI(next)
+      }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
@@ -248,6 +269,19 @@ export default function App() {
     if (e.button !== 0) return
 
     const worldPos = s2w(e.clientX, e.clientY)
+
+    // ── Mode mesure : placement des points ────────────────────────────────────
+    if (measureModeRef.current) {
+      const pts = measurePtsRef.current
+      if (pts.length < 2) {
+        measurePtsRef.current = [...pts, { ...worldPos }]
+      } else {
+        // 3ème clic → reset
+        measurePtsRef.current = [{ ...worldPos }]
+      }
+      return
+    }
+
     const hit = hitTest(worldPos)
     const newId = hit?.id ?? null
     setSelectedId(newId)
@@ -269,6 +303,10 @@ export default function App() {
   }
 
   function onMouseMove(e: React.MouseEvent<HTMLCanvasElement>) {
+    // Tracking souris (pour OPL hover)
+    mouseScreenRef.current = { x: e.clientX, y: e.clientY }
+    mouseWorldRef.current  = s2w(e.clientX, e.clientY)
+
     // Pan takes priority
     const pan = panRef.current
     if (pan) {
@@ -339,7 +377,7 @@ export default function App() {
     <div style={{ position: 'relative', width: '100vw', height: '100vh', overflow: 'hidden' }}>
       <canvas
         ref={canvasRef}
-        style={{ display: 'block', cursor: 'crosshair', position: 'absolute', inset: 0 }}
+        style={{ display: 'block', cursor: measureModeUI ? 'cell' : 'crosshair', position: 'absolute', inset: 0 }}
         onMouseDown={onMouseDown}
         onMouseMove={onMouseMove}
         onMouseUp={onMouseUp}

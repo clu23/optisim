@@ -64,6 +64,8 @@ export interface ThickLensParams {
    * Si présent, n(λ) est calculé par dispersion de Cauchy.
    */
   material?: MaterialId
+  /** Coefficient d'absorption Beer-Lambert (px⁻¹). 0 = transparent. */
+  absorptionCoeff?: number
   label?: string
 }
 
@@ -80,21 +82,23 @@ export class ThickLens implements OpticalElement {
   halfHeight: number
   n: number
   material: MaterialId | undefined
+  absorptionCoeff: number
   label: string
 
   constructor(p: ThickLensParams) {
-    this.id         = p.id
-    this.position   = p.position
-    this.angle      = p.angle
-    this.R1         = p.R1
-    this.R2         = p.R2
-    this.kappa1     = p.kappa1 ?? 0
-    this.kappa2     = p.kappa2 ?? 0
-    this.thickness  = p.thickness
-    this.halfHeight = p.halfHeight
-    this.n          = p.n
-    this.material   = p.material
-    this.label      = p.label ?? 'Lentille épaisse'
+    this.id              = p.id
+    this.position        = p.position
+    this.angle           = p.angle
+    this.R1              = p.R1
+    this.R2              = p.R2
+    this.kappa1          = p.kappa1 ?? 0
+    this.kappa2          = p.kappa2 ?? 0
+    this.thickness       = p.thickness
+    this.halfHeight      = p.halfHeight
+    this.n               = p.n
+    this.material        = p.material
+    this.absorptionCoeff = p.absorptionCoeff ?? 0
+    this.label           = p.label ?? 'Lentille épaisse'
   }
 
   /** Vecteur unitaire de l'axe optique. */
@@ -131,6 +135,46 @@ export class ThickLens implements OpticalElement {
     const nv = this.indexAt(wavelengthNm)
     const t  = this.thickness
     return 1 / ((nv - 1) * (1 / this.R1 + 1 / this.R2 - (nv - 1) * t / (nv * this.R1 * this.R2)))
+  }
+
+  // ── Foyers et plans principaux (optique matricielle paraxiale) ──────────
+  //
+  // Pour une lentille épaisse avec deux surfaces sphériques :
+  //   BFD (back focal distance depuis V2) = f·(1 − (n−1)·t / (n·R1))
+  //   FFD (front focal distance depuis V1) = f·(1 − (n−1)·t / (n·R2))
+  //
+  //   F' (foyer image)      = V2 + BFD·axisDir
+  //   F  (foyer objet)      = V1 − FFD·axisDir
+  //   H' (plan principal arr.) = F' − f·axisDir
+  //   H  (plan principal av.)  = F  + f·axisDir
+  //
+  // Référence : Hecht, Optics §5.2 ; Born & Wolf §4.3.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Retourne les foyers F, F' et les plans principaux H, H'.
+   * @param wavelengthNm  Longueur d'onde pour le calcul de n (défaut 550 nm)
+   */
+  focalData(wavelengthNm = 550): { F: Vec2; Fp: Vec2; H: Vec2; Hp: Vec2; f: number } | null {
+    const f = this.paraxialFocalLength(wavelengthNm)
+    if (!isFinite(f)) return null
+
+    const n  = this.indexAt(wavelengthNm)
+    const t  = this.thickness
+    const ax = this.axisDirection()
+    const v1 = this.vertex1()
+    const v2 = this.vertex2()
+
+    // Distances focales arrière / avant depuis les vertex
+    const bfd = f * (1 - (n - 1) * t / (n * this.R1))
+    const ffd = f * (1 - (n - 1) * t / (n * this.R2))
+
+    const Fp: Vec2 = { x: v2.x + bfd * ax.x, y: v2.y + bfd * ax.y }        // foyer image
+    const F:  Vec2 = { x: v1.x - ffd * ax.x, y: v1.y - ffd * ax.y }        // foyer objet
+    const Hp: Vec2 = { x: Fp.x - f * ax.x, y: Fp.y - f * ax.y }            // plan principal arrière
+    const H:  Vec2 = { x: F.x  + f * ax.x, y: F.y  + f * ax.y }            // plan principal avant
+
+    return { F, Fp, H, Hp, f }
   }
 
   // ── OpticalElement ───────────────────────────────────────────────────────

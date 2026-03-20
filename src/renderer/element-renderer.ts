@@ -376,14 +376,43 @@ function drawThickLens(ctx: CanvasRenderingContext2D, lens: ThickLens, selected:
   ctx.fillText(matLabel, cx, cy + 4)
   ctx.textAlign = 'left'
 
-  // Foyers à la sélection
+  // Foyers et plans principaux à la sélection (calcul exact thick-lens)
   if (selected) {
-    const f   = lens.paraxialFocalLength()
-    if (isFinite(f)) {
-      const Fp: Vec2 = { x: cx + f * ax.x, y: cy + f * ax.y }
-      const F:  Vec2 = { x: cx - f * ax.x, y: cy - f * ax.y }
-      drawFocalCross(ctx, Fp, "F'", LENS_COLOR)
-      drawFocalCross(ctx, F,  'F',  LENS_COLOR)
+    const fd = lens.focalData()
+    if (fd !== null) {
+      // Plans principaux — lignes verticales en tirets
+      const perp: Vec2 = { x: -ax.y, y: ax.x }
+      const HALF_LINE = lens.halfHeight + 12
+      ctx.save()
+      ctx.strokeStyle = 'rgba(180, 180, 255, 0.55)'
+      ctx.lineWidth = 1
+      ctx.setLineDash([4, 4])
+      ctx.shadowBlur = 0
+      // H (plan avant)
+      ctx.beginPath()
+      ctx.moveTo(fd.H.x - perp.x * HALF_LINE, fd.H.y - perp.y * HALF_LINE)
+      ctx.lineTo(fd.H.x + perp.x * HALF_LINE, fd.H.y + perp.y * HALF_LINE)
+      ctx.stroke()
+      // H' (plan arrière)
+      ctx.beginPath()
+      ctx.moveTo(fd.Hp.x - perp.x * HALF_LINE, fd.Hp.y - perp.y * HALF_LINE)
+      ctx.lineTo(fd.Hp.x + perp.x * HALF_LINE, fd.Hp.y + perp.y * HALF_LINE)
+      ctx.stroke()
+      ctx.restore()
+
+      // Labels H / H'
+      ctx.save()
+      ctx.fillStyle = 'rgba(180, 180, 255, 0.75)'
+      ctx.font = 'italic 11px serif'
+      ctx.textAlign = 'center'
+      ctx.fillText('H',  fd.H.x,  fd.H.y  - HALF_LINE - 4)
+      ctx.fillText("H'", fd.Hp.x, fd.Hp.y - HALF_LINE - 4)
+      ctx.textAlign = 'left'
+      ctx.restore()
+
+      // Foyers F / F'
+      drawFocalCross(ctx, fd.Fp, "F'", LENS_COLOR)
+      drawFocalCross(ctx, fd.F,  'F',  LENS_COLOR)
     }
   }
 }

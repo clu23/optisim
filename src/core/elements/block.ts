@@ -87,6 +87,11 @@ export interface BlockParams {
    * Cauchy : n(λ) varie avec la longueur d'onde → dispersion chromatique.
    */
   material?: MaterialId
+  /**
+   * Coefficient d'absorption Beer-Lambert (px⁻¹). 0 = transparent.
+   * Exemple : 0.005 atténue de 40% sur 100 px.
+   */
+  absorptionCoeff?: number
   label?: string
 }
 
@@ -99,9 +104,10 @@ export class Block implements OpticalElement {
   height: number
   n: number
   material: MaterialId | undefined
+  absorptionCoeff: number
   label: string
 
-  constructor({ id, position, angle, width, height, n, material, label }: BlockParams) {
+  constructor({ id, position, angle, width, height, n, material, absorptionCoeff = 0, label }: BlockParams) {
     this.id = id
     this.position = position
     this.angle = angle
@@ -109,6 +115,7 @@ export class Block implements OpticalElement {
     this.height = height
     this.n = n
     this.material = material
+    this.absorptionCoeff = absorptionCoeff
     this.label = label ?? 'Bloc'
   }
 
