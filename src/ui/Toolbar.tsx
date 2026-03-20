@@ -8,6 +8,7 @@ import { CurvedMirror } from '../core/elements/curved-mirror.ts'
 import { ThickLens } from '../core/elements/thick-lens.ts'
 import { ConicMirror } from '../core/elements/conic-mirror.ts'
 import { GRINElement } from '../core/elements/grin-medium.ts'
+import { ImagePlane } from '../core/elements/image-plane.ts'
 import { BeamSource } from '../core/sources/beam.ts'
 import { PointSource } from '../core/sources/point-source.ts'
 import { PRESETS } from './presets.ts'
@@ -89,6 +90,14 @@ export function Toolbar({ canvasW, canvasH, onSceneRef, onAddToScene, onLoadPres
     })
   }
 
+  function addImagePlane() {
+    add(scene => {
+      const id = uid('imgplane')
+      scene.elements.push(new ImagePlane({ id, position: { x: cx + 150, y: cy }, angle: 0, height: 120 }))
+      return id
+    })
+  }
+
   function addGRIN() {
     add(scene => {
       const id = uid('grin')
@@ -150,6 +159,7 @@ export function Toolbar({ canvasW, canvasH, onSceneRef, onAddToScene, onLoadPres
       <button className="toolbar-btn" onClick={addPrism} title="Prisme">△ Prisme</button>
       <button className="toolbar-btn" onClick={addBlock} title="Bloc réfractant">▭ Bloc</button>
       <button className="toolbar-btn" onClick={addGRIN} title="Milieu GRIN (gradient d'indice)">⬡ GRIN</button>
+      <button className="toolbar-btn" onClick={addImagePlane} title="Plan image (spot diagram)">▦ Plan image</button>
 
       <div className="toolbar-sep" />
 

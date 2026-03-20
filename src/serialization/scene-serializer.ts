@@ -8,6 +8,7 @@ import { CurvedMirror } from '../core/elements/curved-mirror.ts'
 import { ThickLens } from '../core/elements/thick-lens.ts'
 import { ConicMirror } from '../core/elements/conic-mirror.ts'
 import { GRINElement, type GRINProfile } from '../core/elements/grin-medium.ts'
+import { ImagePlane } from '../core/elements/image-plane.ts'
 import { BeamSource } from '../core/sources/beam.ts'
 import { PointSource } from '../core/sources/point-source.ts'
 
@@ -33,6 +34,7 @@ type ElementJSON =
   | { type: 'thick-lens';    id: string; label: string; position: { x: number; y: number }; angle: number; R1: number; R2: number; kappa1: number; kappa2: number; thickness: number; halfHeight: number; n: number; material?: MaterialId; glassId?: string; absorptionCoeff?: number }
   | { type: 'conic-mirror'; id: string; label: string; position: { x: number; y: number }; angle: number; R: number; kappa: number; halfHeight: number }
   | { type: 'grin'; id: string; label: string; position: { x: number; y: number }; angle: number; width: number; height: number; profile: GRINProfile; n0: number; alpha: number; alpha2?: number }
+  | { type: 'image-plane'; id: string; label: string; position: { x: number; y: number }; angle: number; height: number }
 
 type Polarization = 's' | 'p' | 'unpolarized'
 
@@ -70,6 +72,9 @@ export function serializeScene(scene: Scene): SceneJSON {
     if (el instanceof GRINElement) {
       return { type: 'grin', id: el.id, label: el.label, position: el.position, angle: el.angle, width: el.width, height: el.height, profile: el.profile, n0: el.n0, alpha: el.alpha, ...(el.alpha2 !== 0 && { alpha2: el.alpha2 }) }
     }
+    if (el instanceof ImagePlane) {
+      return { type: 'image-plane', id: el.id, label: el.label, position: el.position, angle: el.angle, height: el.height }
+    }
     throw new Error(`serializeScene: type d'élément inconnu "${el.type}"`)
   })
 
@@ -105,6 +110,7 @@ export function deserializeScene(json: SceneJSON): Scene {
       case 'thick-lens':    return new ThickLens({ ...el, glassId: el.glassId, absorptionCoeff: el.absorptionCoeff ?? 0 })
       case 'conic-mirror':  return new ConicMirror(el)
       case 'grin':          return new GRINElement({ ...el, alpha2: el.alpha2 ?? 0 })
+      case 'image-plane':   return new ImagePlane(el)
       default: throw new Error(`deserializeScene: type d'élément inconnu "${(el as { type: string }).type}"`)
     }
   })

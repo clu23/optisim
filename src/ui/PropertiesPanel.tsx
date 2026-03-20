@@ -1,6 +1,6 @@
 import './ui.css'
 import { useState, useRef, useEffect } from 'react'
-import type { Scene, OpticalElement, LightSource } from '../core/types.ts'
+import type { Scene, OpticalElement, LightSource, TraceResult } from '../core/types.ts'
 import { FlatMirror } from '../core/elements/flat-mirror.ts'
 import { ThinLens } from '../core/elements/thin-lens.ts'
 import { Block } from '../core/elements/block.ts'
@@ -9,6 +9,8 @@ import { CurvedMirror } from '../core/elements/curved-mirror.ts'
 import { ThickLens } from '../core/elements/thick-lens.ts'
 import { ConicMirror } from '../core/elements/conic-mirror.ts'
 import { GRINElement, type GRINProfile } from '../core/elements/grin-medium.ts'
+import { ImagePlane } from '../core/elements/image-plane.ts'
+import { collectSpots } from '../core/spot-diagram.ts'
 import { BeamSource } from '../core/sources/beam.ts'
 import { PointSource } from '../core/sources/point-source.ts'
 import { wavelengthToColor } from '../renderer/canvas-renderer.ts'
@@ -26,8 +28,9 @@ interface Props {
   selectedId: string | null
   onUpdate: () => void
   onDelete: (id: string) => void
-  useMm?: boolean   // afficher les distances en mm (phase 7A)
-  scale?: number    // mm/px (WorldUnits.scale)
+  useMm?: boolean           // afficher les distances en mm (phase 7A)
+  scale?: number            // mm/px (WorldUnits.scale)
+  traceResults?: TraceResult[]  // résultats de tracé courants (phase 7B)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -667,6 +670,170 @@ function BeamSourcePanel({ src, onUpdate, u }: { src: BeamSource; onUpdate: () =
   </>
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ImagePlanePanel — spot diagram + best focus (Phase 7B)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function ImagePlanePanel({
+  el, onUpdate, u, mmPerPx, results,
+}: {
+  el: ImagePlane
+  onUpdate: () => void
+  u: UnitCtx
+  mmPerPx: number
+  results: TraceResult[]
+}) {
+  const spotData = collectSpots(el, results)
+  const spotRef  = useRef<HTMLCanvasElement>(null)
+
+  // Axial position = projection de position sur l'axe optique
+  const axialPx  = el.position.x * el.axisDir.x + el.position.y * el.axisDir.y
+
+  function setAxial(newAxialDisplay: number) {
+    const newAxialPx = u.toI(newAxialDisplay)
+    const delta = newAxialPx - axialPx
+    el.position = {
+      x: el.position.x + delta * el.axisDir.x,
+      y: el.position.y + delta * el.axisDir.y,
+    }
+    onUpdate()
+  }
+
+  // ── Dessin du spot diagram ─────────────────────────────────────────────────
+  useEffect(() => {
+    const canvas = spotRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    const W = canvas.width, H = canvas.height
+    const PAD = 18
+
+    ctx.fillStyle = '#0a1520'
+    ctx.fillRect(0, 0, W, H)
+
+    // Axe central
+    ctx.strokeStyle = '#1a3040'
+    ctx.lineWidth = 1
+    ctx.beginPath(); ctx.moveTo(0, H / 2); ctx.lineTo(W, H / 2); ctx.stroke()
+
+    if (spotData.points.length === 0) {
+      ctx.fillStyle = '#4a6a7a'
+      ctx.font = '10px monospace'
+      ctx.textAlign = 'center'
+      ctx.fillText('Aucun rayon intercepté', W / 2, H / 2 + 4)
+      return
+    }
+
+    // Échelle : max aberration + 20% de marge, en µm
+    const maxUm = Math.max(spotData.maxRadius * mmPerPx * 1000, 0.001)
+    const rangeUm = maxUm * 1.3
+    const halfH   = (H / 2) - PAD
+
+    function toY(yPx: number): number {
+      const yUm = (yPx - spotData.centroid) * mmPerPx * 1000
+      return H / 2 - (yUm / rangeUm) * halfH
+    }
+
+    // Lignes ±RMS
+    if (spotData.rmsRadius > 0) {
+      const rmsUm = spotData.rmsRadius * mmPerPx * 1000
+      const yRms  = H / 2 - (rmsUm / rangeUm) * halfH
+      ctx.strokeStyle = 'rgba(255, 230, 60, 0.55)'
+      ctx.lineWidth   = 1
+      ctx.setLineDash([4, 3])
+      for (const yLine of [yRms, H - yRms]) {
+        ctx.beginPath(); ctx.moveTo(PAD, yLine); ctx.lineTo(W - PAD, yLine); ctx.stroke()
+      }
+      ctx.setLineDash([])
+    }
+
+    // Points — une colonne par longueur d'onde
+    const wavelengths = [...new Set(spotData.points.map(p => p.wavelength))].sort((a, b) => a - b)
+    const nWl = wavelengths.length
+    const xStep = (W - 2 * PAD) / (nWl + 1)
+
+    for (const pt of spotData.points) {
+      const wi = wavelengths.indexOf(pt.wavelength)
+      const px = PAD + (wi + 1) * xStep
+      const py = toY(pt.y)
+      ctx.fillStyle = wavelengthToColor(pt.wavelength, Math.min(1, pt.intensity * 1.5))
+      ctx.beginPath()
+      ctx.arc(px, py, 2.5, 0, Math.PI * 2)
+      ctx.fill()
+    }
+
+    // Barre d'échelle : 1 unité "ronde" en µm
+    const scaleBarUm = (() => {
+      const mag = Math.pow(10, Math.floor(Math.log10(rangeUm)))
+      const candidates = [mag, mag * 2, mag * 5]
+      return candidates.find(c => c / rangeUm < 0.4) ?? mag
+    })()
+    const scaleBarH = (scaleBarUm / rangeUm) * halfH
+
+    ctx.strokeStyle = '#8bb8f8'
+    ctx.lineWidth   = 2
+    ctx.beginPath()
+    ctx.moveTo(W - 8, H / 2)
+    ctx.lineTo(W - 8, H / 2 - scaleBarH)
+    ctx.stroke()
+    ctx.fillStyle  = '#8bb8f8'
+    ctx.font       = '8px monospace'
+    ctx.textAlign  = 'right'
+    ctx.fillText(`${scaleBarUm < 1 ? scaleBarUm.toFixed(2) : scaleBarUm} µm`, W - 10, H / 2 - scaleBarH / 2 + 3)
+
+    // Labels longueurs d'onde (bas)
+    ctx.font      = '8px monospace'
+    ctx.textAlign = 'center'
+    for (let wi = 0; wi < nWl; wi++) {
+      const px = PAD + (wi + 1) * xStep
+      ctx.fillStyle = wavelengthToColor(wavelengths[wi], 1)
+      ctx.fillText(`${wavelengths[wi]}`, px, H - 3)
+    }
+  }, [spotData, mmPerPx])
+
+  const rmsUm = (spotData.rmsRadius * mmPerPx * 1000)
+  const maxUm = (spotData.maxRadius * mmPerPx * 1000)
+
+  return <>
+    <Slider label="Angle axe" value={el.angle * RAD} min={-180} max={180} step={0.1} unit="°"
+      onChange={v => { el.angle = v * DEG; onUpdate() }} />
+    <Slider label="Demi-hauteur" value={u.toD(el.height)} min={u.toD(20)} max={u.toD(600)} step={u.step} unit={u.unit} digits={u.digits}
+      onChange={v => { el.height = u.toI(v); onUpdate() }} />
+    <Slider label="Position axiale" value={u.toD(axialPx)} min={u.toD(-2000)} max={u.toD(5000)} step={u.step} unit={u.unit} digits={u.digits}
+      onChange={setAxial} />
+
+    {/* Spot diagram */}
+    <div className="props-section">Spot diagram</div>
+    <canvas
+      ref={spotRef}
+      width={200} height={150}
+      style={{ display: 'block', margin: '4px auto', borderRadius: 4, border: '1px solid #1e3040' }}
+    />
+    <div className="prop-row">
+      <div className="prop-header">
+        <span className="prop-label">RMS radius</span>
+        <span className="prop-value" style={{ color: rmsUm < 1 ? '#40e080' : rmsUm < 10 ? '#f0c040' : '#f06060' }}>
+          {rmsUm < 0.01 ? rmsUm.toExponential(2) : rmsUm.toFixed(2)} µm
+        </span>
+      </div>
+    </div>
+    <div className="prop-row">
+      <div className="prop-header">
+        <span className="prop-label">Max radius</span>
+        <span className="prop-value" style={{ color: '#8bb8f8' }}>
+          {maxUm < 0.01 ? maxUm.toExponential(2) : maxUm.toFixed(2)} µm
+        </span>
+      </div>
+    </div>
+    <div className="prop-row">
+      <div className="prop-header">
+        <span className="prop-label">N rayons</span>
+        <span className="prop-value" style={{ color: '#8bb8f8' }}>{spotData.points.length}</span>
+      </div>
+    </div>
+  </>
+}
+
 function PointSourcePanel({ src, onUpdate }: { src: PointSource; onUpdate: () => void }) {
   return <>
     <Slider label="Angle central" value={src.angle * RAD} min={-180} max={180} step={0.1} unit="°"
@@ -684,7 +851,7 @@ function PointSourcePanel({ src, onUpdate }: { src: PointSource; onUpdate: () =>
 // Main panel
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function PropertiesPanel({ scene, selectedId, onUpdate, onDelete, useMm, scale }: Props) {
+export function PropertiesPanel({ scene, selectedId, onUpdate, onDelete, useMm, scale, traceResults }: Props) {
   if (!scene || !selectedId) {
     return (
       <div className="props-panel">
@@ -709,6 +876,7 @@ export function PropertiesPanel({ scene, selectedId, onUpdate, onDelete, useMm, 
     if (el instanceof ThickLens)     return <ThickLensPanel     el={el}  onUpdate={onUpdate} u={u} />
     if (el instanceof ConicMirror)   return <ConicMirrorPanel   el={el}  onUpdate={onUpdate} u={u} />
     if (el instanceof GRINElement)   return <GRINMediumPanel    el={el}  onUpdate={onUpdate} u={u} />
+    if (el instanceof ImagePlane)    return <ImagePlanePanel    el={el}  onUpdate={onUpdate} u={u} mmPerPx={scale ?? 1} results={traceResults ?? []} />
     return null
   }
 
@@ -722,7 +890,7 @@ export function PropertiesPanel({ scene, selectedId, onUpdate, onDelete, useMm, 
   if (!target) return null
 
   const typeLabel = element
-    ? ({ 'flat-mirror': 'Miroir plan', 'thin-lens': 'Lentille mince', 'block': 'Bloc', 'prism': 'Prisme', 'curved-mirror': 'Miroir courbe', 'thick-lens': 'Lentille épaisse', 'conic-mirror': 'Miroir conique', 'grin': 'Milieu GRIN' }[element.type] ?? element.type)
+    ? ({ 'flat-mirror': 'Miroir plan', 'thin-lens': 'Lentille mince', 'block': 'Bloc', 'prism': 'Prisme', 'curved-mirror': 'Miroir courbe', 'thick-lens': 'Lentille épaisse', 'conic-mirror': 'Miroir conique', 'grin': 'Milieu GRIN', 'image-plane': 'Plan image' }[element.type] ?? element.type)
     : (source!.type === 'beam' ? 'Source faisceau' : 'Source ponctuelle')
 
   return (

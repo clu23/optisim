@@ -89,8 +89,9 @@ interface Pan {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const canvasRef       = useRef<HTMLCanvasElement>(null)
-  const sceneRef        = useRef<Scene | null>(null)
+  const canvasRef          = useRef<HTMLCanvasElement>(null)
+  const sceneRef           = useRef<Scene | null>(null)
+  const traceResultsRef    = useRef<TraceResult[]>([])  // résultats courants pour le panneau
   const dragRef         = useRef<Drag | null>(null)
   const panRef          = useRef<Pan | null>(null)
   const rafRef          = useRef(0)
@@ -142,6 +143,7 @@ export default function App() {
       }
 
       const results = traceAll(sceneRef.current)
+      traceResultsRef.current = results
 
       // Background clear (screen space)
       ctx.fillStyle = '#080c14'
@@ -410,6 +412,7 @@ export default function App() {
         onDelete={deleteSelected}
         useMm={useMm}
         scale={sceneRef.current?.metadata.units?.scale ?? 1}
+        traceResults={traceResultsRef.current}
       />
     </div>
   )

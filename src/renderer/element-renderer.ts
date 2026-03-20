@@ -8,6 +8,7 @@ import { CurvedMirror } from '../core/elements/curved-mirror.ts'
 import { ThickLens, sagitta } from '../core/elements/thick-lens.ts'
 import { ConicMirror } from '../core/elements/conic-mirror.ts'
 import { GRINElement } from '../core/elements/grin-medium.ts'
+import { ImagePlane } from '../core/elements/image-plane.ts'
 import { BeamSource } from '../core/sources/beam.ts'
 import { PointSource } from '../core/sources/point-source.ts'
 import { rotate } from '../core/vector.ts'
@@ -42,6 +43,7 @@ export function drawElement(
   else if (element instanceof ThickLens)   drawThickLens(ctx, element, selected)
   else if (element instanceof ConicMirror) drawConicMirror(ctx, element, selected)
   else if (element instanceof GRINElement) drawGRINMedium(ctx, element, selected)
+  else if (element instanceof ImagePlane)  drawImagePlane(ctx, element, selected)
   ctx.restore()
 }
 
@@ -631,4 +633,53 @@ function drawArrow(ctx: CanvasRenderingContext2D, from: Vec2, to: Vec2, color: s
   ctx.lineTo(to.x - HEAD * ux - HEAD * 0.45 * uy, to.y - HEAD * uy + HEAD * 0.45 * ux)
   ctx.closePath()
   ctx.fill()
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ImagePlane — plan image détecteur (Phase 7B)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function drawImagePlane(ctx: CanvasRenderingContext2D, plane: ImagePlane, selected: boolean): void {
+  const [a, b] = plane.endpoints()
+  const ax = plane.axisDir
+
+  const color = selected ? '#a0f0d0' : '#40c090'
+  const alpha = selected ? 0.95 : 0.75
+
+  // Ligne détecteur principale
+  ctx.strokeStyle = `rgba(64, 192, 144, ${alpha})`
+  ctx.lineWidth   = selected ? 2.5 : 1.8
+  ctx.setLineDash([5, 3])
+  ctx.shadowColor = color
+  ctx.shadowBlur  = selected ? 8 : 4
+  ctx.beginPath()
+  ctx.moveTo(a.x, a.y)
+  ctx.lineTo(b.x, b.y)
+  ctx.stroke()
+  ctx.setLineDash([])
+  ctx.shadowBlur = 0
+
+  // Petits tirets sur la face réceptrice (côté opposé à axisDir)
+  const perp = { x: -ax.y, y: ax.x }  // tangente = axe du détecteur
+  const TICK = 6
+  const numTicks = Math.floor(plane.height * 2 / 16)
+  ctx.strokeStyle = `rgba(64, 192, 144, ${alpha * 0.5})`
+  ctx.lineWidth   = 1
+  for (let i = 0; i <= numTicks; i++) {
+    const frac = i / numTicks - 0.5
+    const mx = plane.position.x + frac * plane.height * 2 * perp.x
+    const my = plane.position.y + frac * plane.height * 2 * perp.y
+    ctx.beginPath()
+    ctx.moveTo(mx, my)
+    ctx.lineTo(mx - ax.x * TICK, my - ax.y * TICK)
+    ctx.stroke()
+  }
+
+  // Label
+  ctx.fillStyle   = color
+  ctx.font        = '10px monospace'
+  ctx.textAlign   = 'left'
+  const lx = plane.position.x + perp.x * (plane.height + 10)
+  const ly = plane.position.y + perp.y * (plane.height + 10)
+  ctx.fillText(plane.label || 'Plan image', lx, ly)
 }
