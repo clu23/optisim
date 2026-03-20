@@ -20,9 +20,9 @@ const MAX_SPLIT_DEPTH = 2
 
 /**
  * Intensité minimale en dessous de laquelle un rayon splitté n'est pas tracé.
- * Évite les reflets trop faibles (~1%) pour garder les performances.
+ * 0.001 = 0.1% — permet de voir R_p sur toute la plage angulaire avant Brewster.
  */
-const MIN_SPLIT_INTENSITY = 0.01
+const MIN_SPLIT_INTENSITY = 0.001
 
 /**
  * Distance minimale pour détecter une entrée GRIN (px).
