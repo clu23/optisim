@@ -111,8 +111,8 @@ export class OpticalObject implements LightSource {
       for (const wl of this.wavelengths) {
         for (const fh of fieldHeights) {
           const origin: Vec2 = {
-            x: this.position.x + perpDir.x * fh,
-            y: this.position.y + perpDir.y * fh,
+            x: this.position.x - perpDir.x * fh,
+            y: this.position.y - perpDir.y * fh,
           }
           for (let i = 0; i < this.numRays; i++) {
             const t = this.numRays > 1 ? -1 + 2 * i / (this.numRays - 1) : 0

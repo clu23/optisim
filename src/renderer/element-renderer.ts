@@ -580,9 +580,9 @@ function drawOpticalObject(ctx: CanvasRenderingContext2D, src: OpticalObject, se
   ctx.lineWidth   = 2
 
   if (src.mode === 'finite') {
-    // Flèche de la base (0) vers le sommet (height)
-    const tipX = x + perpDir.x * src.height
-    const tipY = y + perpDir.y * src.height
+    // Flèche de la base (axe optique) vers le sommet (vers le haut, −y canvas)
+    const tipX = x - perpDir.x * src.height
+    const tipY = y - perpDir.y * src.height
 
     // Tige
     ctx.beginPath()
@@ -594,8 +594,8 @@ function drawOpticalObject(ctx: CanvasRenderingContext2D, src: OpticalObject, se
     const ARROW_SIZE = 8
     ctx.beginPath()
     ctx.moveTo(tipX, tipY)
-    ctx.lineTo(tipX - perpDir.x * ARROW_SIZE + axDir.x * (ARROW_SIZE / 2), tipY - perpDir.y * ARROW_SIZE + axDir.y * (ARROW_SIZE / 2))
-    ctx.lineTo(tipX - perpDir.x * ARROW_SIZE - axDir.x * (ARROW_SIZE / 2), tipY - perpDir.y * ARROW_SIZE - axDir.y * (ARROW_SIZE / 2))
+    ctx.lineTo(tipX + perpDir.x * ARROW_SIZE + axDir.x * (ARROW_SIZE / 2), tipY + perpDir.y * ARROW_SIZE + axDir.y * (ARROW_SIZE / 2))
+    ctx.lineTo(tipX + perpDir.x * ARROW_SIZE - axDir.x * (ARROW_SIZE / 2), tipY + perpDir.y * ARROW_SIZE - axDir.y * (ARROW_SIZE / 2))
     ctx.closePath()
     ctx.fill()
 
