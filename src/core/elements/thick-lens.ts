@@ -1,4 +1,4 @@
-import type { Vec2, OpticalSurface, OpticalElement, BoundingBox } from '../types.ts'
+import type { Vec2, OpticalSurface, OpticalElement, BoundingBox, CoatingSpec } from '../types.ts'
 import { ConicSurface } from '../surfaces/conic.ts'
 import { add, scale, rotate } from '../vector.ts'
 import { materialIndex, type MaterialId } from '../dispersion.ts'
@@ -69,6 +69,10 @@ export interface ThickLensParams {
   glassId?: string
   /** Coefficient d'absorption Beer-Lambert (px⁻¹). 0 = transparent. */
   absorptionCoeff?: number
+  /** Coating AR sur la face avant S1 (phase 7D). */
+  coating1?: CoatingSpec
+  /** Coating AR sur la face arrière S2 (phase 7D). */
+  coating2?: CoatingSpec
   label?: string
 }
 
@@ -87,6 +91,8 @@ export class ThickLens implements OpticalElement {
   material: MaterialId | undefined
   glassId: string | undefined
   absorptionCoeff: number
+  coating1: CoatingSpec | undefined
+  coating2: CoatingSpec | undefined
   label: string
 
   constructor(p: ThickLensParams) {
@@ -103,6 +109,8 @@ export class ThickLens implements OpticalElement {
     this.material        = p.material
     this.glassId         = p.glassId
     this.absorptionCoeff = p.absorptionCoeff ?? 0
+    this.coating1        = p.coating1
+    this.coating2        = p.coating2
     this.label           = p.label ?? 'Lentille épaisse'
   }
 
@@ -200,6 +208,7 @@ export class ThickLens implements OpticalElement {
       kappa:      this.kappa1,
       halfHeight: this.halfHeight,
       indexFn:    fn,
+      coating:    this.coating1,
     })
 
     // S2 — face arrière, convexe vers la droite (côté sortant)
@@ -213,6 +222,7 @@ export class ThickLens implements OpticalElement {
       kappa:      this.kappa2,
       halfHeight: this.halfHeight,
       indexFn:    fn,
+      coating:    this.coating2,
     })
 
     return [s1, s2]

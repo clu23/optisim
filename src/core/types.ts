@@ -3,6 +3,22 @@
 // Ce fichier ne dépend d'aucun autre module du projet.
 // ============================================================
 
+// === COATING (phase 7D) ===
+
+/**
+ * Spécification d'un coating AR mono-couche quart-d'onde.
+ * Déposé sur une interface n₁/n₂, réduit la réflexion à λ₀.
+ */
+export interface CoatingSpec {
+  /** Longueur d'onde de conception (nm) pour laquelle le coating est quart-d'onde. */
+  wavelength: number
+  /**
+   * Indice de réfraction de la couche.
+   * Si absent, utilise l'optimal n_c = √(n₁·n₂) pour R = 0 à λ₀ en incidence normale.
+   */
+  nCoating?: number
+}
+
 // === GÉOMÉTRIE ===
 
 export interface Vec2 {
@@ -48,6 +64,8 @@ export interface OpticalSurface {
   intersect(ray: Ray): HitResult | null;
   getNormal(point: Vec2): Vec2;
   getRefractiveIndex(wavelength: number): number;
+  /** Coating AR mono-couche (phase 7D). Absent = interface nue (Fresnel standard). */
+  coating?: CoatingSpec;
 }
 
 // === ÉLÉMENTS ===

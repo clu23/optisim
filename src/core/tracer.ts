@@ -3,6 +3,7 @@ import { ThinLensSurface } from './elements/thin-lens.ts'
 import { reflect, refract } from './optics.ts'
 import { dot } from './vector.ts'
 import { fresnelCoefficients } from './fresnel.ts'
+import { fresnelWithCoating } from './coating.ts'
 import { integrateGRIN, buildGRINSegment } from './tracer-grin.ts'
 import { beerLambert, getAbsorptionCoeff } from './absorption.ts'
 
@@ -132,9 +133,19 @@ function cosIncidence(d: Vec2, n: Vec2): number {
   return Math.min(1, Math.max(0, -dot(d, n)))
 }
 
-/** Réflectance scalaire selon la polarisation du rayon. */
-function reflectance(n1: number, n2: number, cosI: number, pol: Ray['polarization']): number {
-  const f = fresnelCoefficients(n1, n2, cosI)
+/** Réflectance scalaire selon la polarisation du rayon.
+ * Utilise le coating AR si la surface en possède un (phase 7D). */
+function reflectance(
+  n1: number,
+  n2: number,
+  cosI: number,
+  pol: Ray['polarization'],
+  wavelengthNm: number,
+  surface?: OpticalSurface,
+): number {
+  const f = surface?.coating
+    ? fresnelWithCoating(n1, n2, cosI, surface.coating, wavelengthNm)
+    : fresnelCoefficients(n1, n2, cosI)
   if (pol === 's') return f.Rs
   if (pol === 'p') return f.Rp
   return f.Runpol   // 'unpolarized' ou undefined
@@ -192,7 +203,7 @@ export function traceRay(ray: Ray, scene: Scene, splitDepth = MAX_SPLIT_DEPTH): 
       const exitN     = grinExitNormal(exitPt, bb)
       const nGRINExit = grinInside.refractiveIndexAt(exitPt, current.wavelength)
       const cosIExit  = cosIncidence(exitDir, exitN)
-      const R         = reflectance(nGRINExit, 1, cosIExit, current.polarization)
+      const R         = reflectance(nGRINExit, 1, cosIExit, current.polarization, current.wavelength)
       const T         = 1 - R
 
       const refractedExit = refract(exitDir, exitN, nGRINExit, 1)
@@ -235,7 +246,7 @@ export function traceRay(ray: Ray, scene: Scene, splitDepth = MAX_SPLIT_DEPTH): 
       // Réfraction entrée air → n_GRIN (avec Fresnel)
       const nGRINEntry  = grinEntry.grin.refractiveIndexAt(entryPt, current.wavelength)
       const cosIEntry   = cosIncidence(current.direction, grinEntry.normal)
-      const R           = reflectance(1, nGRINEntry, cosIEntry, current.polarization)
+      const R           = reflectance(1, nGRINEntry, cosIEntry, current.polarization, current.wavelength)
       const T           = 1 - R
       const refractedIn = refract(current.direction, grinEntry.normal, 1, nGRINEntry)
       const inDir       = refractedIn ?? reflect(current.direction, grinEntry.normal)
@@ -252,7 +263,7 @@ export function traceRay(ray: Ray, scene: Scene, splitDepth = MAX_SPLIT_DEPTH): 
       const exitN     = grinExitNormal(exitPt, grinEntry.bb)
       const nGRINExit = grinEntry.grin.refractiveIndexAt(exitPt, current.wavelength)
       const cosIExit  = cosIncidence(exitDir, exitN)
-      const Rout      = reflectance(nGRINExit, 1, cosIExit, current.polarization)
+      const Rout      = reflectance(nGRINExit, 1, cosIExit, current.polarization, current.wavelength)
       const Tout      = 1 - Rout
       const refractedOut = refract(exitDir, exitN, nGRINExit, 1)
       const outDir    = refractedOut ?? reflect(exitDir, exitN)
@@ -333,7 +344,7 @@ export function traceRay(ray: Ray, scene: Scene, splitDepth = MAX_SPLIT_DEPTH): 
       const n2 = isInsideElement ? 1 : nMaterial
 
       const cosI = cosIncidence(current.direction, closest.normal)
-      const R    = reflectance(n1, n2, cosI, current.polarization)
+      const R    = reflectance(n1, n2, cosI, current.polarization, current.wavelength, closestSurface)
       const T    = 1 - R
 
       const refracted = refract(current.direction, closest.normal, n1, n2)

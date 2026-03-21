@@ -1,4 +1,4 @@
-import type { Vec2, Ray, HitResult, OpticalSurface, OpticalElement, BoundingBox } from '../types.ts'
+import type { Vec2, Ray, HitResult, OpticalSurface, OpticalElement, BoundingBox, CoatingSpec } from '../types.ts'
 import { intersectRaySegment } from '../intersection.ts'
 import { add, normalize, sub } from '../vector.ts'
 import { materialIndex, type MaterialId } from '../dispersion.ts'
@@ -18,12 +18,14 @@ class PrismSurface implements OpticalSurface {
   private readonly a: Vec2
   private readonly b: Vec2
   private readonly indexFn: (wavelengthNm: number) => number
+  readonly coating: CoatingSpec | undefined
 
-  constructor(id: string, a: Vec2, b: Vec2, indexFn: (wavelengthNm: number) => number) {
+  constructor(id: string, a: Vec2, b: Vec2, indexFn: (wavelengthNm: number) => number, coating?: CoatingSpec) {
     this.id = id
     this.a = a
     this.b = b
     this.indexFn = indexFn
+    this.coating = coating
   }
 
   intersect(ray: Ray): HitResult | null {
@@ -93,6 +95,8 @@ export interface PrismParams {
   glassId?: string
   /** Coefficient d'absorption Beer-Lambert (px⁻¹). 0 = transparent. */
   absorptionCoeff?: number
+  /** Coating AR sur toutes les surfaces du prisme (phase 7D). */
+  coating?: CoatingSpec
   label?: string
 }
 
@@ -107,9 +111,10 @@ export class Prism implements OpticalElement {
   material: MaterialId | undefined
   glassId: string | undefined
   absorptionCoeff: number
+  coating: CoatingSpec | undefined
   label: string
 
-  constructor({ id, position, angle, size, apexAngle, n, material, glassId, absorptionCoeff = 0, label }: PrismParams) {
+  constructor({ id, position, angle, size, apexAngle, n, material, glassId, absorptionCoeff = 0, coating, label }: PrismParams) {
     this.id = id
     this.position = position
     this.angle = angle
@@ -119,6 +124,7 @@ export class Prism implements OpticalElement {
     this.material = material
     this.glassId = glassId
     this.absorptionCoeff = absorptionCoeff
+    this.coating = coating
     this.label = label ?? 'Prisme'
   }
 
@@ -177,10 +183,11 @@ export class Prism implements OpticalElement {
   getSurfaces(): OpticalSurface[] {
     const [v0, v1, v2] = this.vertices()
     const fn = (wl: number) => this.indexAt(wl)
+    const c = this.coating
     return [
-      new PrismSurface(`${this.id}-s0`, v0, v1, fn),  // face gauche
-      new PrismSurface(`${this.id}-s1`, v1, v2, fn),  // base
-      new PrismSurface(`${this.id}-s2`, v2, v0, fn),  // face droite
+      new PrismSurface(`${this.id}-s0`, v0, v1, fn, c),  // face gauche
+      new PrismSurface(`${this.id}-s1`, v1, v2, fn, c),  // base
+      new PrismSurface(`${this.id}-s2`, v2, v0, fn, c),  // face droite
     ]
   }
 

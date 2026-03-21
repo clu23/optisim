@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, useCallback } from 'react'
+import React, { useRef, useEffect, useState, useCallback } from 'react'
 import type { Scene, Vec2, TraceResult } from './core/types.ts'
 import { traceRay } from './core/tracer.ts'
 import { drawScene, drawHUD, drawRuler, drawOPLOverlay, drawMeasureOverlay, screenToWorld, defaultView } from './renderer/canvas-renderer.ts'
@@ -6,6 +6,100 @@ import type { ViewTransform } from './renderer/canvas-renderer.ts'
 import { PropertiesPanel } from './ui/PropertiesPanel.tsx'
 import { Toolbar } from './ui/Toolbar.tsx'
 import { PRESETS } from './ui/presets.ts'
+import { buildPrescription, prescriptionToCSV } from './core/prescription.ts'
+import type { PrescriptionTable } from './core/prescription.ts'
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PrescriptionModal — tableau des surfaces optiques
+// ─────────────────────────────────────────────────────────────────────────────
+
+function PrescriptionModal({ scene, scale, onClose }: {
+  scene: Scene
+  scale: number
+  onClose: () => void
+}) {
+  const table: PrescriptionTable = buildPrescription(scene, scale)
+  const csv = prescriptionToCSV(table)
+
+  function downloadCSV() {
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href = url; a.download = 'prescription.csv'; a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  function copyClipboard() {
+    navigator.clipboard.writeText(csv).catch(() => undefined)
+  }
+
+  const fmtR = (v: number) => !isFinite(v) ? '∞' : v.toFixed(2)
+  const fmtT = (v: number) => !isFinite(v) ? '∞' : v.toFixed(2)
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      zIndex: 1000,
+    }} onClick={onClose}>
+      <div style={{
+        background: '#111827', border: '1px solid #374151',
+        borderRadius: 8, padding: 20, maxWidth: '90vw', maxHeight: '80vh',
+        overflow: 'auto', color: '#e2e8f0', fontFamily: 'monospace', fontSize: 13,
+      }} onClick={e => e.stopPropagation()}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <span style={{ fontWeight: 700, fontSize: 14, color: '#93c5fd' }}>Tableau de prescription</span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={copyClipboard} style={btnStyle}>Copier CSV</button>
+            <button onClick={downloadCSV} style={btnStyle}>Télécharger CSV</button>
+            <button onClick={onClose} style={{ ...btnStyle, color: '#f87171' }}>✕</button>
+          </div>
+        </div>
+        <table style={{ borderCollapse: 'collapse', whiteSpace: 'nowrap' }}>
+          <thead>
+            <tr style={{ color: '#94a3b8', borderBottom: '1px solid #374151' }}>
+              {['#', 'Label', 'Type', 'Rayon (mm)', 'Épaisseur (mm)', 'Matériau', 'nD', 'Abbe', 'R-semi (mm)', 'κ'].map(h => (
+                <th key={h} style={{ padding: '4px 10px', textAlign: 'left', fontWeight: 600 }}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {table.rows.map((row, i) => (
+              <tr key={i} style={{ borderBottom: '1px solid #1f2937' }}>
+                <td style={tdStyle}>{i + 1}</td>
+                <td style={tdStyle}>{row.label ?? '—'}</td>
+                <td style={{ ...tdStyle, color: typeColor(row.type) }}>{row.type}</td>
+                <td style={tdStyle}>{fmtR(row.radius)}</td>
+                <td style={tdStyle}>{fmtT(row.thickness)}</td>
+                <td style={tdStyle}>{row.material}</td>
+                <td style={tdStyle}>{row.nD != null ? row.nD.toFixed(4) : '—'}</td>
+                <td style={tdStyle}>{row.abbeNumber != null ? row.abbeNumber.toFixed(1) : '—'}</td>
+                <td style={tdStyle}>{row.clearRadius != null ? row.clearRadius.toFixed(2) : '—'}</td>
+                <td style={tdStyle}>{row.kappa != null ? row.kappa.toFixed(2) : '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {table.rows.length === 0 && (
+          <div style={{ color: '#6b7280', padding: '12px 0' }}>Aucune surface dans la scène.</div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+const btnStyle: React.CSSProperties = {
+  background: '#1e3a5f', border: '1px solid #2563eb', borderRadius: 4,
+  color: '#93c5fd', padding: '3px 10px', cursor: 'pointer', fontSize: 12,
+}
+const tdStyle: React.CSSProperties = { padding: '3px 10px' }
+function typeColor(t: string) {
+  if (t === 'refract') return '#6ee7b7'
+  if (t === 'reflect') return '#fcd34d'
+  if (t === 'stop')    return '#c4b5fd'
+  if (t === 'image')   return '#93c5fd'
+  return '#e2e8f0'
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Fit view to scene — calcule pan + zoom pour que toute la scène soit visible
@@ -102,10 +196,11 @@ export default function App() {
   const measurePtsRef   = useRef<Vec2[]>([])
 
   // React state — drives UI re-renders (panel + toolbar)
-  const [selectedId, setSelectedId]       = useState<string | null>(null)
-  const [version, setVersion]             = useState(0)  // bump to refresh panel
-  const [measureModeUI, setMeasureModeUI] = useState(false)
-  const [useMm, setUseMm]                 = useState(false)
+  const [selectedId, setSelectedId]         = useState<string | null>(null)
+  const [version, setVersion]               = useState(0)  // bump to refresh panel
+  const [measureModeUI, setMeasureModeUI]   = useState(false)
+  const [useMm, setUseMm]                   = useState(false)
+  const [showPrescription, setShowPrescription] = useState(false)
 
   // Keep a ref in sync so RAF / event handlers can read without stale closure
   const selectedIdRef = useRef<string | null>(null)
@@ -414,6 +509,30 @@ export default function App() {
         scale={sceneRef.current?.metadata.units?.scale ?? 1}
         traceResults={traceResultsRef.current}
       />
+
+      {/* Bouton prescription */}
+      <button
+        onClick={() => setShowPrescription(v => !v)}
+        style={{
+          position: 'absolute', bottom: 16, right: 16,
+          background: '#1e3a5f', border: '1px solid #2563eb', borderRadius: 6,
+          color: '#93c5fd', padding: '6px 14px', cursor: 'pointer',
+          fontSize: 12, fontFamily: 'monospace',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+        }}
+        title="Tableau de prescription (surfaces optiques)"
+      >
+        Prescription
+      </button>
+
+      {/* Modal prescription */}
+      {showPrescription && sceneRef.current && (
+        <PrescriptionModal
+          scene={sceneRef.current}
+          scale={sceneRef.current.metadata.units?.scale ?? 1}
+          onClose={() => setShowPrescription(false)}
+        />
+      )}
     </div>
   )
 }

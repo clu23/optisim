@@ -1,6 +1,6 @@
 import './ui.css'
 import { useState, useRef, useEffect } from 'react'
-import type { Scene, OpticalElement, LightSource, TraceResult } from '../core/types.ts'
+import type { Scene, OpticalElement, LightSource, TraceResult, CoatingSpec } from '../core/types.ts'
 import { FlatMirror } from '../core/elements/flat-mirror.ts'
 import { ThinLens } from '../core/elements/thin-lens.ts'
 import { Block } from '../core/elements/block.ts'
@@ -21,6 +21,7 @@ import { OpticalObject } from '../core/elements/optical-object.ts'
 import { wavelengthToColor } from '../renderer/canvas-renderer.ts'
 import { MATERIALS, referenceIndex, type MaterialId } from '../core/dispersion.ts'
 import { GLASS_CATALOG, sellmeierIndex, LAMBDA_D } from '../core/glass-catalog.ts'
+import { optimizeScene, makeRmsMetric } from '../core/optimizer.ts'
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -428,7 +429,7 @@ function FlatMirrorPanel({ el, onUpdate, u }: { el: FlatMirror; onUpdate: () => 
   </>
 }
 
-function ThinLensPanel({ el, onUpdate, u }: { el: ThinLens; onUpdate: () => void; u: UnitCtx }) {
+function ThinLensPanel({ el, onUpdate, u, scene }: { el: ThinLens; onUpdate: () => void; u: UnitCtx; scene: Scene | null }) {
   return <>
     <Slider label="Angle axe" value={el.angle * RAD} min={-180} max={180} step={0.1} unit="°"
       onChange={v => { el.angle = v * DEG; onUpdate() }} />
@@ -444,7 +445,171 @@ function ThinLensPanel({ el, onUpdate, u }: { el: ThinLens; onUpdate: () => void
         </span>
       </div>
     </div>
+    {scene && <OptimizerPanel el={el} scene={scene} onUpdate={onUpdate} />}
   </>
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CoatingToggle — Activer/désactiver un coating AR quart-d'onde (phase 7D)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function CoatingToggle({
+  label,
+  coating,
+  onChange,
+}: {
+  label: string
+  coating: CoatingSpec | undefined
+  onChange: (c: CoatingSpec | undefined) => void
+}) {
+  const active = coating !== undefined
+  return (
+    <div className="prop-row" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 3 }}>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer', userSelect: 'none', fontSize: 11, color: '#b0c8e8' }}>
+        <input
+          type="checkbox"
+          checked={active}
+          onChange={e => onChange(e.target.checked ? { wavelength: 550 } : undefined)}
+          style={{ cursor: 'pointer' }}
+        />
+        {label} coating AR
+      </label>
+      {active && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, paddingLeft: 18 }}>
+          <span style={{ fontSize: 10, color: '#7090a0' }}>λ₀</span>
+          <input
+            type="number"
+            value={coating!.wavelength}
+            min={380} max={780} step={10}
+            onChange={e => onChange({ ...coating!, wavelength: +e.target.value })}
+            style={{ width: 56, fontSize: 11, background: '#0d1a24', color: '#60c8ff',
+                     border: '1px solid #2a4060', borderRadius: 4, padding: '2px 4px' }}
+          />
+          <span style={{ fontSize: 10, color: '#7090a0' }}>nm</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OptimizerPanel — Optimiseur mono-variable (phase 7D)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const OPTIMIZABLE_PROPS: Record<string, { label: string; min: number; max: number }[]> = {
+  'thin-lens':  [{ label: 'f (focale)', min: 20, max: 1000 }],
+  'thick-lens': [
+    { label: 'R1',         min: 20, max: 1000 },
+    { label: 'R2',         min: 20, max: 1000 },
+    { label: 'thickness',  min: 2,  max: 200  },
+    { label: 'halfHeight', min: 10, max: 300  },
+  ],
+  'curved-mirror': [{ label: 'radius', min: 20, max: 1000 }],
+  'conic-mirror':  [{ label: 'R',      min: 20, max: 1000 }],
+}
+
+const PROP_INTERNAL: Record<string, string> = {
+  'f (focale)': 'focalLength',
+  'R1': 'R1', 'R2': 'R2', 'thickness': 'thickness', 'halfHeight': 'halfHeight',
+  'radius': 'radius', 'R': 'R',
+}
+
+function OptimizerPanel({
+  el, scene, onUpdate,
+}: {
+  el: OpticalElement
+  scene: Scene
+  onUpdate: () => void
+}) {
+  const props = OPTIMIZABLE_PROPS[el.type] ?? []
+  const [propIdx, setPropIdx]     = useState(0)
+  const [rangeMin, setRangeMin]   = useState(props[0]?.min ?? 20)
+  const [rangeMax, setRangeMax]   = useState(props[0]?.max ?? 500)
+  const [running, setRunning]     = useState(false)
+  const [lastResult, setLastResult] = useState<string | null>(null)
+
+  // Cherche le premier ImagePlane dans la scène
+  const imagePlaneId = scene.elements.find(e => e.type === 'image-plane')?.id ?? ''
+
+  if (props.length === 0 || !imagePlaneId) return null
+
+  const selected = props[propIdx]
+
+  function run() {
+    if (!selected || !imagePlaneId) return
+    setRunning(true)
+    setLastResult(null)
+    try {
+      const metric = makeRmsMetric(imagePlaneId)
+      const result = optimizeScene(scene, {
+        elementId: el.id,
+        property: PROP_INTERNAL[selected.label] ?? selected.label,
+        min: rangeMin,
+        max: rangeMax,
+      }, metric, { scanPoints: 10 })
+
+      // Appliquer la valeur optimale
+      const obj = el as unknown as Record<string, unknown>
+      obj[PROP_INTERNAL[selected.label] ?? selected.label] = result.optimalValue
+      setLastResult(`Optimal: ${result.optimalValue.toFixed(2)}  RMS: ${result.optimalMetric.toFixed(3)} px`)
+      onUpdate()
+    } finally {
+      setRunning(false)
+    }
+  }
+
+  return (
+    <div style={{ marginTop: 6, borderTop: '1px solid #2a3a4a', paddingTop: 6 }}>
+      <div className="props-section" style={{ marginBottom: 4 }}>Optimiseur</div>
+      <div className="prop-row" style={{ gap: 4 }}>
+        <span className="prop-label" style={{ width: 70 }}>Paramètre</span>
+        <select
+          value={propIdx}
+          onChange={e => {
+            const i = +e.target.value
+            setPropIdx(i)
+            setRangeMin(props[i].min)
+            setRangeMax(props[i].max)
+          }}
+          style={{ flex: 1, fontSize: 11, background: '#0d1a24', color: '#c0d8f0',
+                   border: '1px solid #2a4060', borderRadius: 4, padding: '2px 4px' }}
+        >
+          {props.map((p, i) => <option key={i} value={i}>{p.label}</option>)}
+        </select>
+      </div>
+      <div className="prop-row" style={{ gap: 4 }}>
+        <span className="prop-label" style={{ width: 70 }}>Plage</span>
+        <input type="number" value={rangeMin} onChange={e => setRangeMin(+e.target.value)}
+          style={{ width: 52, fontSize: 11, background: '#0d1a24', color: '#c0d8f0',
+                   border: '1px solid #2a4060', borderRadius: 4, padding: '2px 4px' }} />
+        <span style={{ fontSize: 10, color: '#607080' }}>–</span>
+        <input type="number" value={rangeMax} onChange={e => setRangeMax(+e.target.value)}
+          style={{ width: 52, fontSize: 11, background: '#0d1a24', color: '#c0d8f0',
+                   border: '1px solid #2a4060', borderRadius: 4, padding: '2px 4px' }} />
+      </div>
+      <div className="prop-row">
+        <span className="prop-label" style={{ width: 70, fontSize: 10, color: '#607080' }}>Métrique</span>
+        <span style={{ fontSize: 10, color: '#60c8ff' }}>RMS spot — {scene.elements.find(e => e.id === imagePlaneId)?.label ?? 'Image'}</span>
+      </div>
+      <button
+        onClick={run}
+        disabled={running}
+        style={{
+          marginTop: 4, width: '100%', padding: '5px 0', fontSize: 11,
+          background: running ? '#1a2a3a' : 'rgba(60,120,220,0.25)',
+          color: running ? '#607080' : '#80c0ff',
+          border: '1px solid rgba(80,140,255,0.4)', borderRadius: 5, cursor: running ? 'default' : 'pointer',
+        }}
+      >
+        {running ? 'Optimisation…' : '▶ Lancer la section dorée'}
+      </button>
+      {lastResult && (
+        <div style={{ fontSize: 10, color: '#60e880', marginTop: 4, textAlign: 'center' }}>
+          {lastResult}
+        </div>
+      )}
+    </div>
+  )
 }
 
 function BlockPanel({ el, onUpdate, u }: { el: Block; onUpdate: () => void; u: UnitCtx }) {
@@ -464,6 +629,7 @@ function BlockPanel({ el, onUpdate, u }: { el: Block; onUpdate: () => void; u: U
     )}
     <Slider label="Absorption α" value={el.absorptionCoeff} min={0} max={0.05} step={0.0005} digits={4} unit=" px⁻¹"
       onChange={v => { el.absorptionCoeff = v; onUpdate() }} />
+    <CoatingToggle label="Toutes faces" coating={el.coating} onChange={c => { el.coating = c; onUpdate() }} />
   </>
 }
 
@@ -484,10 +650,11 @@ function PrismPanel({ el, onUpdate, u }: { el: Prism; onUpdate: () => void; u: U
     )}
     <Slider label="Absorption α" value={el.absorptionCoeff} min={0} max={0.05} step={0.0005} digits={4} unit=" px⁻¹"
       onChange={v => { el.absorptionCoeff = v; onUpdate() }} />
+    <CoatingToggle label="Toutes faces" coating={el.coating} onChange={c => { el.coating = c; onUpdate() }} />
   </>
 }
 
-function ThickLensPanel({ el, onUpdate, u }: { el: ThickLens; onUpdate: () => void; u: UnitCtx }) {
+function ThickLensPanel({ el, onUpdate, u, scene }: { el: ThickLens; onUpdate: () => void; u: UnitCtx; scene: Scene | null }) {
   const f = el.paraxialFocalLength()
   return <>
     <Slider label="Angle axe" value={el.angle * RAD} min={-180} max={180} step={0.1} unit="°"
@@ -513,6 +680,8 @@ function ThickLensPanel({ el, onUpdate, u }: { el: ThickLens; onUpdate: () => vo
     )}
     <Slider label="Absorption α" value={el.absorptionCoeff} min={0} max={0.05} step={0.0005} digits={4} unit=" px⁻¹"
       onChange={v => { el.absorptionCoeff = v; onUpdate() }} />
+    <CoatingToggle label="S1 (avant)" coating={el.coating1} onChange={c => { el.coating1 = c; onUpdate() }} />
+    <CoatingToggle label="S2 (arrière)" coating={el.coating2} onChange={c => { el.coating2 = c; onUpdate() }} />
     <div className="prop-row">
       <div className="prop-header">
         <span className="prop-label">f paraxiale</span>
@@ -521,6 +690,7 @@ function ThickLensPanel({ el, onUpdate, u }: { el: ThickLens; onUpdate: () => vo
         </span>
       </div>
     </div>
+    {scene && <OptimizerPanel el={el} scene={scene} onUpdate={onUpdate} />}
   </>
 }
 
@@ -1167,11 +1337,11 @@ export function PropertiesPanel({ scene, selectedId, onUpdate, onDelete, useMm, 
 
   function renderElementProps(el: OpticalElement) {
     if (el instanceof FlatMirror)    return <FlatMirrorPanel    el={el}  onUpdate={onUpdate} u={u} />
-    if (el instanceof ThinLens)      return <ThinLensPanel      el={el}  onUpdate={onUpdate} u={u} />
+    if (el instanceof ThinLens)      return <ThinLensPanel      el={el}  onUpdate={onUpdate} u={u} scene={scene} />
     if (el instanceof Block)         return <BlockPanel         el={el}  onUpdate={onUpdate} u={u} />
     if (el instanceof Prism)         return <PrismPanel         el={el}  onUpdate={onUpdate} u={u} />
     if (el instanceof CurvedMirror)  return <CurvedMirrorPanel  el={el}  onUpdate={onUpdate} u={u} />
-    if (el instanceof ThickLens)     return <ThickLensPanel     el={el}  onUpdate={onUpdate} u={u} />
+    if (el instanceof ThickLens)     return <ThickLensPanel     el={el}  onUpdate={onUpdate} u={u} scene={scene} />
     if (el instanceof ConicMirror)   return <ConicMirrorPanel   el={el}  onUpdate={onUpdate} u={u} />
     if (el instanceof GRINElement)      return <GRINMediumPanel    el={el}  onUpdate={onUpdate} u={u} />
     if (el instanceof ImagePlane)       return <ImagePlanePanel    el={el}  onUpdate={onUpdate} u={u} mmPerPx={scale ?? 1} results={traceResults ?? []} scene={scene} />

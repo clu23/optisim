@@ -1,4 +1,4 @@
-import type { Vec2, Ray, HitResult, OpticalSurface, OpticalElement, BoundingBox } from '../types.ts'
+import type { Vec2, Ray, HitResult, OpticalSurface, OpticalElement, BoundingBox, CoatingSpec } from '../types.ts'
 import { intersectRaySegment } from '../intersection.ts'
 import { add, sub, normalize, rotate } from '../vector.ts'
 import { materialIndex, type MaterialId } from '../dispersion.ts'
@@ -19,12 +19,14 @@ class BlockSurface implements OpticalSurface {
   private readonly b: Vec2
   // Fonction d'indice dépendante de λ (Cauchy si matériau, constante sinon)
   private readonly indexFn: (wavelengthNm: number) => number
+  readonly coating: CoatingSpec | undefined
 
-  constructor(id: string, a: Vec2, b: Vec2, indexFn: (wavelengthNm: number) => number) {
+  constructor(id: string, a: Vec2, b: Vec2, indexFn: (wavelengthNm: number) => number, coating?: CoatingSpec) {
     this.id = id
     this.a = a
     this.b = b
     this.indexFn = indexFn
+    this.coating = coating
   }
 
   intersect(ray: Ray): HitResult | null {
@@ -95,6 +97,8 @@ export interface BlockParams {
    * Exemple : 0.005 atténue de 40% sur 100 px.
    */
   absorptionCoeff?: number
+  /** Coating AR sur toutes les surfaces du bloc (phase 7D). */
+  coating?: CoatingSpec
   label?: string
 }
 
@@ -109,9 +113,10 @@ export class Block implements OpticalElement {
   material: MaterialId | undefined
   glassId: string | undefined
   absorptionCoeff: number
+  coating: CoatingSpec | undefined
   label: string
 
-  constructor({ id, position, angle, width, height, n, material, glassId, absorptionCoeff = 0, label }: BlockParams) {
+  constructor({ id, position, angle, width, height, n, material, glassId, absorptionCoeff = 0, coating, label }: BlockParams) {
     this.id = id
     this.position = position
     this.angle = angle
@@ -121,6 +126,7 @@ export class Block implements OpticalElement {
     this.material = material
     this.glassId = glassId
     this.absorptionCoeff = absorptionCoeff
+    this.coating = coating
     this.label = label ?? 'Bloc'
   }
 
@@ -152,11 +158,12 @@ export class Block implements OpticalElement {
     const [bl, br, tr, tl] = this.vertices()
     // La fonction d'indice est partagée par toutes les faces du bloc
     const fn = (wl: number) => this.indexAt(wl)
+    const c = this.coating
     return [
-      new BlockSurface(`${this.id}-s0`, bl, br, fn),  // face inférieure
-      new BlockSurface(`${this.id}-s1`, br, tr, fn),  // face droite
-      new BlockSurface(`${this.id}-s2`, tr, tl, fn),  // face supérieure
-      new BlockSurface(`${this.id}-s3`, tl, bl, fn),  // face gauche
+      new BlockSurface(`${this.id}-s0`, bl, br, fn, c),  // face inférieure
+      new BlockSurface(`${this.id}-s1`, br, tr, fn, c),  // face droite
+      new BlockSurface(`${this.id}-s2`, tr, tl, fn, c),  // face supérieure
+      new BlockSurface(`${this.id}-s3`, tl, bl, fn, c),  // face gauche
     ]
   }
 

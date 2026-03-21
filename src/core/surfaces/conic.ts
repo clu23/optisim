@@ -1,4 +1,4 @@
-import type { Vec2, Ray, HitResult, OpticalSurface } from '../types.ts'
+import type { Vec2, Ray, HitResult, OpticalSurface, CoatingSpec } from '../types.ts'
 import { normalize } from '../vector.ts'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -58,6 +58,8 @@ export interface ConicSurfaceParams {
    * Permet la dispersion chromatique sur les surfaces coniques réfractantes.
    */
   indexFn?: (wavelengthNm: number) => number
+  /** Coating AR mono-couche (phase 7D). Absent = interface nue. */
+  coating?: CoatingSpec
 }
 
 export class ConicSurface implements OpticalSurface {
@@ -69,6 +71,8 @@ export class ConicSurface implements OpticalSurface {
   readonly halfHeight: number
   private readonly _n: number
   private readonly _indexFn: ((wl: number) => number) | undefined
+  /** Coating AR mono-couche (phase 7D). */
+  readonly coating: CoatingSpec | undefined
 
   constructor(p: ConicSurfaceParams) {
     this.id         = p.id
@@ -79,6 +83,7 @@ export class ConicSurface implements OpticalSurface {
     this.halfHeight = p.halfHeight
     this._n         = p.n ?? 1
     this._indexFn   = p.indexFn
+    this.coating    = p.coating
   }
 
   // ── Transformations repère monde ↔ repère local ──────────────────────────
