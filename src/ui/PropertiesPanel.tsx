@@ -10,10 +10,14 @@ import { ThickLens } from '../core/elements/thick-lens.ts'
 import { ConicMirror } from '../core/elements/conic-mirror.ts'
 import { GRINElement, type GRINProfile } from '../core/elements/grin-medium.ts'
 import { ImagePlane } from '../core/elements/image-plane.ts'
+import { ApertureElement } from '../core/elements/aperture.ts'
 import { collectSpots } from '../core/spot-diagram.ts'
 import { computeRayFan, computeLCA, autoRayFanConfig } from '../core/ray-fan.ts'
+import { computeImage, computeEFL } from '../core/image-calculator.ts'
+import { computePupils } from '../core/pupils.ts'
 import { BeamSource } from '../core/sources/beam.ts'
 import { PointSource } from '../core/sources/point-source.ts'
+import { OpticalObject } from '../core/elements/optical-object.ts'
 import { wavelengthToColor } from '../renderer/canvas-renderer.ts'
 import { MATERIALS, referenceIndex, type MaterialId } from '../core/dispersion.ts'
 import { GLASS_CATALOG, sellmeierIndex, LAMBDA_D } from '../core/glass-catalog.ts'
@@ -1019,6 +1023,115 @@ function ImagePlanePanel({
   </>
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// AperturePanel — diaphragme (Phase 7C)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function AperturePanel({ el, onUpdate, u, scene }: { el: ApertureElement; onUpdate: () => void; u: UnitCtx; scene: Scene | null }) {
+  const pupils = scene ? computePupils(scene, -500, 550) : null
+
+  return <>
+    <Slider label="Angle" value={el.angle * RAD} min={-180} max={180} step={0.1} unit="°"
+      onChange={v => { el.angle = v * DEG; onUpdate() }} />
+    <Slider label="Diamètre total" value={u.toD(el.diameter)} min={u.toD(20)} max={u.toD(600)} step={u.step} unit={u.unit} digits={u.digits}
+      onChange={v => { el.diameter = u.toI(v); el.clearRadius = Math.min(el.clearRadius, el.diameter / 2); onUpdate() }} />
+    <Slider label="Rayon ouverture" value={u.toD(el.clearRadius)} min={u.toD(1)} max={u.toD(el.diameter / 2)} step={u.step} unit={u.unit} digits={u.digits}
+      onChange={v => { el.clearRadius = u.toI(v); onUpdate() }} />
+
+    {pupils && <>
+      <div className="prop-row">
+        <span className="prop-label">f/N</span>
+        <span className="prop-value">{pupils.fNumber !== null ? `f/${pupils.fNumber.toFixed(1)}` : '—'}</span>
+      </div>
+      <div className="prop-row">
+        <span className="prop-label">NA image</span>
+        <span className="prop-value">{pupils.NA !== null ? pupils.NA.toFixed(3) : '—'}</span>
+      </div>
+      <div className="prop-row">
+        <span className="prop-label">EFL</span>
+        <span className="prop-value">{pupils.efl !== null ? `${u.toD(Math.abs(pupils.efl)).toFixed(u.digits)} ${u.unit}` : '—'}</span>
+      </div>
+      <div className="prop-row">
+        <span className="prop-label">Pupille entrée x</span>
+        <span className="prop-value">{u.toD(pupils.entrancePupilX).toFixed(u.digits)} {u.unit}</span>
+      </div>
+      <div className="prop-row">
+        <span className="prop-label">Pupille sortie x</span>
+        <span className="prop-value">{u.toD(pupils.exitPupilX).toFixed(u.digits)} {u.unit}</span>
+      </div>
+    </>}
+  </>
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OpticalObjectPanel — flèche objet (Phase 7C)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function OpticalObjectPanel({ src, onUpdate, u, scene }: { src: OpticalObject; onUpdate: () => void; u: UnitCtx; scene: Scene | null }) {
+  const imgResult = scene && src.mode === 'finite'
+    ? computeImage(scene, src.position.x, src.height, src.wavelengths[0] ?? 550)
+    : null
+  const efl = scene ? computeEFL(scene, src.wavelengths[0] ?? 550, src.position.x - 100, 10) : null
+
+  const modeOptions: Array<{ value: 'finite' | 'infinite'; label: string }> = [
+    { value: 'finite',   label: 'Fini (flèche)' },
+    { value: 'infinite', label: 'Infini (ondes planes)' },
+  ]
+
+  return <>
+    <div className="prop-row">
+      <span className="prop-label">Mode</span>
+      <select className="prop-material-select"
+        value={src.mode}
+        onChange={e => { src.mode = e.target.value as 'finite' | 'infinite'; onUpdate() }}
+      >
+        {modeOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </div>
+    <Slider label={src.mode === 'finite' ? 'Hauteur objet' : 'Demi-angle champ'} value={src.mode === 'finite' ? u.toD(src.height) : src.height * RAD} min={src.mode === 'finite' ? u.toD(1) : 0.1} max={src.mode === 'finite' ? u.toD(300) : 30} step={src.mode === 'finite' ? u.step : 0.1} unit={src.mode === 'finite' ? u.unit : '°'} digits={src.mode === 'finite' ? u.digits : 1}
+      onChange={v => { src.height = src.mode === 'finite' ? u.toI(v) : v * DEG; onUpdate() }} />
+    <Slider label="Angle axe" value={src.angle * RAD} min={-30} max={30} step={0.1} unit="°"
+      onChange={v => { src.angle = v * DEG; onUpdate() }} />
+    <Slider label="Nb rayons" value={src.numRays} min={1} max={21} step={1} digits={0}
+      onChange={v => { src.numRays = v; onUpdate() }} />
+    {src.mode === 'finite' && <Slider label="Éventail (demi-angle)" value={src.spreadAngle * RAD} min={1} max={60} step={0.5} unit="°"
+      onChange={v => { src.spreadAngle = v * DEG; onUpdate() }} />}
+    {src.mode === 'infinite' && <Slider label="Largeur faisceau" value={u.toD(src.width)} min={u.toD(20)} max={u.toD(600)} step={u.step} unit={u.unit} digits={u.digits}
+      onChange={v => { src.width = u.toI(v); onUpdate() }} />}
+    <div className="prop-row">
+      <span className="prop-label">Points de champ</span>
+      <select className="prop-material-select"
+        value={src.numFieldPoints}
+        onChange={e => { src.numFieldPoints = parseInt(e.target.value, 10); onUpdate() }}
+      >
+        <option value={1}>1 (sommet)</option>
+        <option value={2}>2 (base + sommet)</option>
+        <option value={3}>3 (base + mi + sommet)</option>
+      </select>
+    </div>
+    <WavelengthPicker wavelengths={src.wavelengths} onChange={wl => { src.wavelengths = wl; onUpdate() }} />
+
+    {/* Image calculée */}
+    {imgResult && imgResult.imageX !== null && <>
+      <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', margin: '6px 0' }} />
+      <div className="prop-row">
+        <span className="prop-label">Image x</span>
+        <span className="prop-value" style={{ color: imgResult.isReal ? '#80ff80' : '#ffaa60' }}>
+          {u.toD(imgResult.imageX).toFixed(u.digits)} {u.unit} {imgResult.isReal ? '(réelle)' : '(virtuelle)'}
+        </span>
+      </div>
+      {imgResult.magnification !== null && <div className="prop-row">
+        <span className="prop-label">Grandissement</span>
+        <span className="prop-value">{imgResult.magnification.toFixed(3)}×</span>
+      </div>}
+      {efl !== null && <div className="prop-row">
+        <span className="prop-label">EFL système</span>
+        <span className="prop-value">{u.toD(Math.abs(efl)).toFixed(u.digits)} {u.unit}</span>
+      </div>}
+    </>}
+  </>
+}
+
 function PointSourcePanel({ src, onUpdate }: { src: PointSource; onUpdate: () => void }) {
   return <>
     <Slider label="Angle central" value={src.angle * RAD} min={-180} max={180} step={0.1} unit="°"
@@ -1060,14 +1173,16 @@ export function PropertiesPanel({ scene, selectedId, onUpdate, onDelete, useMm, 
     if (el instanceof CurvedMirror)  return <CurvedMirrorPanel  el={el}  onUpdate={onUpdate} u={u} />
     if (el instanceof ThickLens)     return <ThickLensPanel     el={el}  onUpdate={onUpdate} u={u} />
     if (el instanceof ConicMirror)   return <ConicMirrorPanel   el={el}  onUpdate={onUpdate} u={u} />
-    if (el instanceof GRINElement)   return <GRINMediumPanel    el={el}  onUpdate={onUpdate} u={u} />
-    if (el instanceof ImagePlane)    return <ImagePlanePanel    el={el}  onUpdate={onUpdate} u={u} mmPerPx={scale ?? 1} results={traceResults ?? []} scene={scene} />
+    if (el instanceof GRINElement)      return <GRINMediumPanel    el={el}  onUpdate={onUpdate} u={u} />
+    if (el instanceof ImagePlane)       return <ImagePlanePanel    el={el}  onUpdate={onUpdate} u={u} mmPerPx={scale ?? 1} results={traceResults ?? []} scene={scene} />
+    if (el instanceof ApertureElement)  return <AperturePanel      el={el}  onUpdate={onUpdate} u={u} scene={scene} />
     return null
   }
 
   function renderSourceProps(src: LightSource) {
-    if (src instanceof BeamSource)   return <BeamSourcePanel   src={src} onUpdate={onUpdate} u={u} />
-    if (src instanceof PointSource)  return <PointSourcePanel  src={src} onUpdate={onUpdate} />
+    if (src instanceof BeamSource)    return <BeamSourcePanel    src={src} onUpdate={onUpdate} u={u} />
+    if (src instanceof PointSource)   return <PointSourcePanel   src={src} onUpdate={onUpdate} />
+    if (src instanceof OpticalObject) return <OpticalObjectPanel src={src} onUpdate={onUpdate} u={u} scene={scene} />
     return null
   }
 
@@ -1075,8 +1190,8 @@ export function PropertiesPanel({ scene, selectedId, onUpdate, onDelete, useMm, 
   if (!target) return null
 
   const typeLabel = element
-    ? ({ 'flat-mirror': 'Miroir plan', 'thin-lens': 'Lentille mince', 'block': 'Bloc', 'prism': 'Prisme', 'curved-mirror': 'Miroir courbe', 'thick-lens': 'Lentille épaisse', 'conic-mirror': 'Miroir conique', 'grin': 'Milieu GRIN', 'image-plane': 'Plan image' }[element.type] ?? element.type)
-    : (source!.type === 'beam' ? 'Source faisceau' : 'Source ponctuelle')
+    ? ({ 'flat-mirror': 'Miroir plan', 'thin-lens': 'Lentille mince', 'block': 'Bloc', 'prism': 'Prisme', 'curved-mirror': 'Miroir courbe', 'thick-lens': 'Lentille épaisse', 'conic-mirror': 'Miroir conique', 'grin': 'Milieu GRIN', 'image-plane': 'Plan image', 'aperture': 'Diaphragme' }[element.type] ?? element.type)
+    : ({ 'beam': 'Source faisceau', 'point': 'Source ponctuelle', 'object': 'Objet optique' }[source!.type] ?? source!.type)
 
   return (
     <div className="props-panel">

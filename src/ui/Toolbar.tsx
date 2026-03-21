@@ -9,8 +9,10 @@ import { ThickLens } from '../core/elements/thick-lens.ts'
 import { ConicMirror } from '../core/elements/conic-mirror.ts'
 import { GRINElement } from '../core/elements/grin-medium.ts'
 import { ImagePlane } from '../core/elements/image-plane.ts'
+import { ApertureElement } from '../core/elements/aperture.ts'
 import { BeamSource } from '../core/sources/beam.ts'
 import { PointSource } from '../core/sources/point-source.ts'
+import { OpticalObject } from '../core/elements/optical-object.ts'
 import { PRESETS } from './presets.ts'
 import { downloadScene, loadSceneFromFile } from '../serialization/scene-serializer.ts'
 
@@ -118,6 +120,22 @@ export function Toolbar({ canvasW, canvasH, onSceneRef, onAddToScene, onLoadPres
     })
   }
 
+  function addAperture() {
+    add(scene => {
+      const id = uid('aperture')
+      scene.elements.push(new ApertureElement({ id, position: { x: cx, y: cy }, angle: 0, diameter: 120, clearRadius: 30 }))
+      return id
+    })
+  }
+
+  function addOpticalObject() {
+    add(scene => {
+      const id = uid('object')
+      scene.sources.push(new OpticalObject({ id, position: { x: cx - 200, y: cy }, angle: 0, mode: 'finite', height: 60, wavelengths: [486, 550, 656], numRays: 5 }))
+      return id
+    })
+  }
+
   function addBeam() {
     add(scene => {
       const id = uid('beam')
@@ -160,6 +178,7 @@ export function Toolbar({ canvasW, canvasH, onSceneRef, onAddToScene, onLoadPres
       <button className="toolbar-btn" onClick={addBlock} title="Bloc réfractant">▭ Bloc</button>
       <button className="toolbar-btn" onClick={addGRIN} title="Milieu GRIN (gradient d'indice)">⬡ GRIN</button>
       <button className="toolbar-btn" onClick={addImagePlane} title="Plan image (spot diagram)">▦ Plan image</button>
+      <button className="toolbar-btn" onClick={addAperture} title="Diaphragme / pupille d'ouverture">◎ Diaphragme</button>
 
       <div className="toolbar-sep" />
 
@@ -167,6 +186,7 @@ export function Toolbar({ canvasW, canvasH, onSceneRef, onAddToScene, onLoadPres
       <span className="toolbar-label">Sources</span>
       <button className="toolbar-btn" onClick={addBeam} title="Faisceau parallèle">⇒ Faisceau</button>
       <button className="toolbar-btn" onClick={addPointSrc} title="Source ponctuelle">✦ Point</button>
+      <button className="toolbar-btn" onClick={addOpticalObject} title="Objet optique (flèche objet fini/infini)">↕ Objet</button>
 
       <div className="toolbar-sep" style={{ marginLeft: 'auto' }} />
 

@@ -519,15 +519,15 @@ I(s) = I₀ × exp(-α × s)
 
 ### Phase 7C — Objet, image, diaphragme et pupilles
 
-- [ ] Élément OpticalObject (flèche finie ou faisceau infini)
-- [ ] Calcul et affichage de l'image (position, grandissement)
-- [ ] Élément Aperture (diaphragme, bloque les rayons hors ouverture)
-- [ ] Calcul des pupilles d'entrée et de sortie
-- [ ] Nombre d'ouverture f/N et ouverture numérique NA
-- [ ] Multi-champ : faisceaux à 0°, 50%, 100% du champ
-- [ ] Tests : objet au foyer d'une lentille → image à l'infini
-- [ ] Tests : grandissement d'une lentille mince = -v/u
-- [ ] Tests : diaphragme bloque les rayons hors ouverture
+- [x] Élément OpticalObject (flèche finie ou faisceau infini)
+- [x] Calcul et affichage de l'image (position, grandissement)
+- [x] Élément Aperture (diaphragme, bloque les rayons hors ouverture)
+- [x] Calcul des pupilles d'entrée et de sortie
+- [x] Nombre d'ouverture f/N et ouverture numérique NA
+- [x] Multi-champ : faisceaux à 0°, 50%, 100% du champ
+- [x] Tests : objet au foyer d'une lentille → image à l'infini
+- [x] Tests : grandissement d'une lentille mince = -v/u
+- [x] Tests : diaphragme bloque les rayons hors ouverture
 
 ### Phase 7D — Prescription, optimiseur et coating
 

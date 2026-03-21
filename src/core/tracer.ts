@@ -294,6 +294,10 @@ export function traceRay(ray: Ray, scene: Scene, splitDepth = MAX_SPLIT_DEPTH): 
     const element = surfaceOwner.get(closest.surfaceId)!
     let newDir: Vec2
 
+    // Diaphragme : le rayon touche une aile opaque → arrêt immédiat.
+    // (Le segment origin → hit.point est déjà dans `segments`.)
+    if (element.type === 'aperture') break
+
     if (closestSurface instanceof ThinLensSurface) {
       // Lentille mince : déflexion exacte, pas de Fresnel (idéalisé)
       newDir = closestSurface.deflect(current.direction, closest.point)

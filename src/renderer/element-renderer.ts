@@ -9,8 +9,10 @@ import { ThickLens, sagitta } from '../core/elements/thick-lens.ts'
 import { ConicMirror } from '../core/elements/conic-mirror.ts'
 import { GRINElement } from '../core/elements/grin-medium.ts'
 import { ImagePlane } from '../core/elements/image-plane.ts'
+import { ApertureElement } from '../core/elements/aperture.ts'
 import { BeamSource } from '../core/sources/beam.ts'
 import { PointSource } from '../core/sources/point-source.ts'
+import { OpticalObject } from '../core/elements/optical-object.ts'
 import { rotate } from '../core/vector.ts'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -42,8 +44,9 @@ export function drawElement(
   else if (element instanceof CurvedMirror) drawCurvedMirror(ctx, element, selected)
   else if (element instanceof ThickLens)   drawThickLens(ctx, element, selected)
   else if (element instanceof ConicMirror) drawConicMirror(ctx, element, selected)
-  else if (element instanceof GRINElement) drawGRINMedium(ctx, element, selected)
-  else if (element instanceof ImagePlane)  drawImagePlane(ctx, element, selected)
+  else if (element instanceof GRINElement)    drawGRINMedium(ctx, element, selected)
+  else if (element instanceof ImagePlane)     drawImagePlane(ctx, element, selected)
+  else if (element instanceof ApertureElement) drawAperture(ctx, element, selected)
   ctx.restore()
 }
 
@@ -57,8 +60,9 @@ export function drawSource(
     ctx.shadowColor = 'rgba(255, 255, 0, 0.9)'
     ctx.shadowBlur = 20
   }
-  if (source instanceof BeamSource)   drawBeamSource(ctx, source)
-  else if (source instanceof PointSource) drawPointSource(ctx, source)
+  if (source instanceof BeamSource)        drawBeamSource(ctx, source)
+  else if (source instanceof PointSource)  drawPointSource(ctx, source)
+  else if (source instanceof OpticalObject) drawOpticalObject(ctx, source, selected)
   ctx.restore()
 }
 
@@ -485,6 +489,157 @@ function drawGRINMedium(ctx: CanvasRenderingContext2D, el: GRINElement, selected
 
 export function isGRINElement(element: OpticalElement): boolean {
   return element.type === 'grin'
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Aperture (diaphragme)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function drawAperture(ctx: CanvasRenderingContext2D, el: ApertureElement, selected: boolean): void {
+  const pd = el.planeDir
+  const pos = el.position
+  const r  = el.diameter / 2
+  const cr = el.clearRadius
+
+  // Couleur du diaphragme : gris foncé / blanc selon sélection
+  const strokeColor = selected ? 'rgba(255, 200, 80, 0.95)' : 'rgba(200, 200, 200, 0.85)'
+  const fillColor   = selected ? 'rgba(255, 200, 80, 0.08)' : 'rgba(80, 80, 80, 0.55)'
+
+  if (selected) {
+    ctx.shadowColor = 'rgba(255, 200, 80, 0.6)'
+    ctx.shadowBlur  = 12
+  }
+
+  // Aile haute : de +clearRadius à +diameter/2
+  ctx.fillStyle   = fillColor
+  ctx.strokeStyle = strokeColor
+  ctx.lineWidth   = 2.5
+  ctx.lineCap     = 'butt'
+
+  const drawWing = (from: number, to: number) => {
+    const ax = pos.x + from * pd.x, ay = pos.y + from * pd.y
+    const bx = pos.x + to   * pd.x, by = pos.y + to   * pd.y
+    ctx.beginPath()
+    ctx.moveTo(ax, ay)
+    ctx.lineTo(bx, by)
+    ctx.stroke()
+    // Petit crochet perpendiculaire à l'extrémité extérieure pour marquer le bord
+    const ax2 = el.axisDir
+    const ew = 6
+    ctx.beginPath()
+    ctx.moveTo(bx - ax2.x * ew, by - ax2.y * ew)
+    ctx.lineTo(bx + ax2.x * ew, by + ax2.y * ew)
+    ctx.stroke()
+  }
+
+  drawWing(cr, r)
+  drawWing(-cr, -r)
+
+  // Ouverture nette : ligne fine au centre (zone transparente)
+  ctx.shadowBlur  = 0
+  ctx.strokeStyle = 'rgba(120, 220, 255, 0.35)'
+  ctx.lineWidth   = 1
+  ctx.setLineDash([4, 4])
+  ctx.beginPath()
+  ctx.moveTo(pos.x - cr * pd.x, pos.y - cr * pd.y)
+  ctx.lineTo(pos.x + cr * pd.x, pos.y + cr * pd.y)
+  ctx.stroke()
+  ctx.setLineDash([])
+
+  // Étiquette
+  ctx.fillStyle = selected ? 'rgba(255, 200, 80, 0.9)' : 'rgba(200, 200, 200, 0.7)'
+  ctx.font = '11px monospace'
+  ctx.textAlign = 'center'
+  const ax2 = el.axisDir
+  ctx.fillText(el.label, pos.x + ax2.x * 24, pos.y + ax2.y * 24 - 4)
+  ctx.textAlign = 'left'
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OpticalObject (flèche objet)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function drawOpticalObject(ctx: CanvasRenderingContext2D, src: OpticalObject, selected: boolean): void {
+  const perpDir = rotate({ x: 0, y: 1 }, src.angle)
+  const axDir   = rotate({ x: 1, y: 0 }, src.angle)
+  const { x, y } = src.position
+
+  const arrowColor  = selected ? 'rgba(255, 200, 80, 0.95)' : 'rgba(80, 200, 120, 0.9)'
+  const labelColor  = selected ? 'rgba(255, 200, 80, 0.9)'  : 'rgba(80, 200, 120, 0.7)'
+
+  if (selected) {
+    ctx.shadowColor = 'rgba(255, 200, 80, 0.6)'
+    ctx.shadowBlur  = 10
+  } else {
+    ctx.shadowColor = 'rgba(80, 200, 120, 0.4)'
+    ctx.shadowBlur  = 6
+  }
+
+  ctx.strokeStyle = arrowColor
+  ctx.fillStyle   = arrowColor
+  ctx.lineWidth   = 2
+
+  if (src.mode === 'finite') {
+    // Flèche de la base (0) vers le sommet (height)
+    const tipX = x + perpDir.x * src.height
+    const tipY = y + perpDir.y * src.height
+
+    // Tige
+    ctx.beginPath()
+    ctx.moveTo(x, y)
+    ctx.lineTo(tipX, tipY)
+    ctx.stroke()
+
+    // Pointe de flèche
+    const ARROW_SIZE = 8
+    ctx.beginPath()
+    ctx.moveTo(tipX, tipY)
+    ctx.lineTo(tipX - perpDir.x * ARROW_SIZE + axDir.x * (ARROW_SIZE / 2), tipY - perpDir.y * ARROW_SIZE + axDir.y * (ARROW_SIZE / 2))
+    ctx.lineTo(tipX - perpDir.x * ARROW_SIZE - axDir.x * (ARROW_SIZE / 2), tipY - perpDir.y * ARROW_SIZE - axDir.y * (ARROW_SIZE / 2))
+    ctx.closePath()
+    ctx.fill()
+
+    // Petite base perpendiculaire
+    ctx.strokeStyle = arrowColor
+    ctx.lineWidth = 1.5
+    ctx.beginPath()
+    ctx.moveTo(x - axDir.x * 6, y - axDir.y * 6)
+    ctx.lineTo(x + axDir.x * 6, y + axDir.y * 6)
+    ctx.stroke()
+  } else {
+    // Mode infini : faisceau d'onde plane → dessin de 3 flèches parallèles
+    const nArrows = 3
+    const halfW   = src.width / 2
+    for (let i = 0; i < nArrows; i++) {
+      const t  = nArrows > 1 ? -1 + 2 * i / (nArrows - 1) : 0
+      // Note : perpDir = rotate({0,1}, angle), donc pour angle=0 : perpDir={0,1}
+      const ox2 = x - axDir.x * 30 + perpDir.x * t * halfW
+      const oy2 = y - axDir.y * 30 + perpDir.y * t * halfW
+
+      ctx.beginPath()
+      ctx.moveTo(ox2, oy2)
+      ctx.lineTo(ox2 + axDir.x * 24, oy2 + axDir.y * 24)
+      ctx.stroke()
+      // Pointe
+      const tx = ox2 + axDir.x * 24
+      const ty = oy2 + axDir.y * 24
+      ctx.beginPath()
+      ctx.moveTo(tx, ty)
+      ctx.lineTo(tx - axDir.x * 7 + perpDir.x * 4, ty - axDir.y * 7 + perpDir.y * 4)
+      ctx.lineTo(tx - axDir.x * 7 - perpDir.x * 4, ty - axDir.y * 7 - perpDir.y * 4)
+      ctx.closePath()
+      ctx.fill()
+    }
+  }
+
+  ctx.shadowBlur = 0
+
+  // Étiquette
+  ctx.fillStyle = labelColor
+  ctx.font = '11px monospace'
+  ctx.textAlign = 'center'
+  ctx.fillText(src.label, x - axDir.x * 22, y - axDir.y * 22)
+  ctx.textAlign = 'left'
 }
 
 function drawBeamSource(ctx: CanvasRenderingContext2D, source: BeamSource): void {

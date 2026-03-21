@@ -9,8 +9,10 @@ import { ThickLens } from '../core/elements/thick-lens.ts'
 import { ConicMirror } from '../core/elements/conic-mirror.ts'
 import { GRINElement, type GRINProfile } from '../core/elements/grin-medium.ts'
 import { ImagePlane } from '../core/elements/image-plane.ts'
+import { ApertureElement } from '../core/elements/aperture.ts'
 import { BeamSource } from '../core/sources/beam.ts'
 import { PointSource } from '../core/sources/point-source.ts'
+import { OpticalObject } from '../core/elements/optical-object.ts'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Format JSON de la scène
@@ -35,12 +37,14 @@ type ElementJSON =
   | { type: 'conic-mirror'; id: string; label: string; position: { x: number; y: number }; angle: number; R: number; kappa: number; halfHeight: number }
   | { type: 'grin'; id: string; label: string; position: { x: number; y: number }; angle: number; width: number; height: number; profile: GRINProfile; n0: number; alpha: number; alpha2?: number }
   | { type: 'image-plane'; id: string; label: string; position: { x: number; y: number }; angle: number; height: number }
+  | { type: 'aperture'; id: string; label: string; position: { x: number; y: number }; angle: number; diameter: number; clearRadius: number }
 
 type Polarization = 's' | 'p' | 'unpolarized'
 
 type SourceJSON =
-  | { type: 'beam';  id: string; position: { x: number; y: number }; angle: number; wavelengths: number[]; numRays: number; width: number; polarization?: Polarization }
-  | { type: 'point'; id: string; position: { x: number; y: number }; angle: number; wavelengths: number[]; numRays: number; spreadAngle: number; polarization?: Polarization }
+  | { type: 'beam';   id: string; position: { x: number; y: number }; angle: number; wavelengths: number[]; numRays: number; width: number; polarization?: Polarization }
+  | { type: 'point';  id: string; position: { x: number; y: number }; angle: number; wavelengths: number[]; numRays: number; spreadAngle: number; polarization?: Polarization }
+  | { type: 'object'; id: string; position: { x: number; y: number }; angle: number; wavelengths: number[]; mode: 'finite' | 'infinite'; height: number; numRays: number; spreadAngle: number; numFieldPoints: number; width: number; label: string; polarization?: Polarization }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Serialize
@@ -75,6 +79,9 @@ export function serializeScene(scene: Scene): SceneJSON {
     if (el instanceof ImagePlane) {
       return { type: 'image-plane', id: el.id, label: el.label, position: el.position, angle: el.angle, height: el.height }
     }
+    if (el instanceof ApertureElement) {
+      return { type: 'aperture', id: el.id, label: el.label, position: el.position, angle: el.angle, diameter: el.diameter, clearRadius: el.clearRadius }
+    }
     throw new Error(`serializeScene: type d'élément inconnu "${el.type}"`)
   })
 
@@ -84,6 +91,9 @@ export function serializeScene(scene: Scene): SceneJSON {
     }
     if (src instanceof PointSource) {
       return { type: 'point', id: src.id, position: src.position, angle: src.angle, wavelengths: src.wavelengths, numRays: src.numRays, spreadAngle: src.spreadAngle, ...(src.polarization !== 'unpolarized' && { polarization: src.polarization }) }
+    }
+    if (src instanceof OpticalObject) {
+      return { type: 'object', id: src.id, position: src.position, angle: src.angle, wavelengths: src.wavelengths, mode: src.mode, height: src.height, numRays: src.numRays, spreadAngle: src.spreadAngle, numFieldPoints: src.numFieldPoints, width: src.width, label: src.label, ...(src.polarization !== 'unpolarized' && { polarization: src.polarization }) }
     }
     throw new Error(`serializeScene: type de source inconnu "${src.type}"`)
   })
@@ -111,6 +121,7 @@ export function deserializeScene(json: SceneJSON): Scene {
       case 'conic-mirror':  return new ConicMirror(el)
       case 'grin':          return new GRINElement({ ...el, alpha2: el.alpha2 ?? 0 })
       case 'image-plane':   return new ImagePlane(el)
+      case 'aperture':      return new ApertureElement(el)
       default: throw new Error(`deserializeScene: type d'élément inconnu "${(el as { type: string }).type}"`)
     }
   })
@@ -118,7 +129,8 @@ export function deserializeScene(json: SceneJSON): Scene {
   const sources = json.sources.map(src => {
     switch (src.type) {
       case 'beam':  return new BeamSource({ ...src, polarization: src.polarization ?? 'unpolarized' })
-      case 'point': return new PointSource({ ...src, polarization: src.polarization ?? 'unpolarized' })
+      case 'point':  return new PointSource({ ...src, polarization: src.polarization ?? 'unpolarized' })
+      case 'object': return new OpticalObject({ ...src, polarization: src.polarization ?? 'unpolarized' })
       default: throw new Error(`deserializeScene: type de source inconnu "${(src as { type: string }).type}"`)
     }
   })

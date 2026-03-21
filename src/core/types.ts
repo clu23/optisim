@@ -72,7 +72,7 @@ export interface OpticalElement {
 
 export interface LightSource {
   id: string;
-  type: 'point' | 'beam';
+  type: 'point' | 'beam' | 'object';
   position: Vec2;
   angle: number;          // Degrés
   wavelengths: number[];  // Liste de longueurs d'onde (nm)
