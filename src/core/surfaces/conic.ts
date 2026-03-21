@@ -188,18 +188,23 @@ export class ConicSurface implements OpticalSurface {
 
       // Convergence : f(hit) ≈ 0
       const fCheck = (1 + k) * xHit * xHit - 2 * R * xHit + yHit * yHit
-      if (Math.abs(fCheck) > 1e-5 * R) continue
+      if (Math.abs(fCheck) > 1e-5 * Math.abs(R)) continue
 
-      // La conique s'étend vers les x locaux positifs (côté concave).
-      // On n'accepte que les intersections proches du sommet (0 ≤ x ≤ sagMax),
-      // ce qui rejette l'intersection symétrique sur la face opposée de la sphère/ellipse.
+      // La conique s'étend dans le signe de R :
+      //   R > 0 → vers +x_local (xHit ∈ [0, sagMax])   — convexe vers l'incident
+      //   R < 0 → vers -x_local (xHit ∈ [sagMax, 0])   — concave vers l'incident (lentille divergente)
       // sagMax = sag(halfHeight, R, κ) = h² / (R·(1 + √(1−(1+κ)h²/R²)))
-      if (xHit < -1e-6) continue
       const argMax = 1 - (1 + k) * (halfHeight * halfHeight) / (R * R)
       const sagMax = argMax >= 0
         ? (halfHeight * halfHeight) / (R * (1 + Math.sqrt(argMax)))
         : halfHeight * halfHeight / R   // approximation sécurisée si κ>0 extrême
-      if (xHit > sagMax + 1) continue
+      if (R >= 0) {
+        if (xHit < -1e-6)     continue
+        if (xHit > sagMax + 1) continue
+      } else {
+        if (xHit >  1e-6)     continue   // R<0 : sommet à x=0, surface en x<0
+        if (xHit < sagMax - 1) continue
+      }
 
       // Contrainte d'ouverture
       if (Math.abs(yHit) > halfHeight) continue

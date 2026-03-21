@@ -511,11 +511,11 @@ I(s) = I₀ × exp(-α × s)
 - [x] Calcul SpotData (centroid, rmsRadius, maxRadius, geoRadius)
 - [x] Affichage spot diagram (panneau dédié, échelle µm)
 - [x] Curseur best focus (déplacement du plan image le long de l'axe)
-- [ ] Ray fan : calcul et affichage Δy(h) par longueur d'onde
-- [ ] Aberration chromatique longitudinale : graphe focus(λ)
+- [x] Ray fan : calcul et affichage Δy(h) par longueur d'onde
+- [x] Aberration chromatique longitudinale : graphe focus(λ)
 - [x] Tests : système parfait (miroir parabolique) → RMS ≈ 0
 - [x] Tests : lentille simple → RMS > 0, diminue avec diaphragme
-- [ ] Tests : doublet achromat → chromatique longitudinale < lentille simple
+- [x] Tests : doublet achromat → chromatique longitudinale < lentille simple
 
 ### Phase 7C — Objet, image, diaphragme et pupilles
 

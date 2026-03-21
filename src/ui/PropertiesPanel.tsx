@@ -11,6 +11,7 @@ import { ConicMirror } from '../core/elements/conic-mirror.ts'
 import { GRINElement, type GRINProfile } from '../core/elements/grin-medium.ts'
 import { ImagePlane } from '../core/elements/image-plane.ts'
 import { collectSpots } from '../core/spot-diagram.ts'
+import { computeRayFan, computeLCA, autoRayFanConfig } from '../core/ray-fan.ts'
 import { BeamSource } from '../core/sources/beam.ts'
 import { PointSource } from '../core/sources/point-source.ts'
 import { wavelengthToColor } from '../renderer/canvas-renderer.ts'
@@ -674,17 +675,23 @@ function BeamSourcePanel({ src, onUpdate, u }: { src: BeamSource; onUpdate: () =
 // ImagePlanePanel — spot diagram + best focus (Phase 7B)
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Longueurs d'onde spectrales de référence pour la LCA
+const LCA_WAVELENGTHS = [440, 480, 520, 550, 587, 620, 656, 700]
+
 function ImagePlanePanel({
-  el, onUpdate, u, mmPerPx, results,
+  el, onUpdate, u, mmPerPx, results, scene,
 }: {
   el: ImagePlane
   onUpdate: () => void
   u: UnitCtx
   mmPerPx: number
   results: TraceResult[]
+  scene: import('../core/types.ts').Scene | null
 }) {
   const spotData = collectSpots(el, results)
-  const spotRef  = useRef<HTMLCanvasElement>(null)
+  const spotRef    = useRef<HTMLCanvasElement>(null)
+  const fanRef     = useRef<HTMLCanvasElement>(null)
+  const lcaRef     = useRef<HTMLCanvasElement>(null)
 
   // Axial position = projection de position sur l'axe optique
   const axialPx  = el.position.x * el.axisDir.x + el.position.y * el.axisDir.y
@@ -698,6 +705,154 @@ function ImagePlanePanel({
     }
     onUpdate()
   }
+
+  // ── Ray fan et LCA (calculés depuis la scène + rayons paraxiaux) ──────────
+  const wavelengthsInScene = [...new Set(results.flatMap(r => r.segments.map(s => s.wavelength)))].sort((a,b)=>a-b)
+  const fanCfg  = scene ? autoRayFanConfig(scene, el, wavelengthsInScene.length > 0 ? wavelengthsInScene : [550]) : null
+  const lcaCfg  = scene && fanCfg ? { pupilX: fanCfg.pupilX, pupilRadius: fanCfg.pupilRadius, rayDir: fanCfg.rayDir, wavelengths: LCA_WAVELENGTHS } : null
+  const fanData = scene && fanCfg ? computeRayFan(scene, el, fanCfg) : []
+  const lcaData = scene && lcaCfg ? computeLCA(scene, lcaCfg)        : []
+
+  // ── Dessin du ray fan ──────────────────────────────────────────────────────
+  useEffect(() => {
+    const canvas = fanRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    const W = canvas.width, H = canvas.height
+    const PAD = 18
+
+    ctx.fillStyle = '#0a1520'
+    ctx.fillRect(0, 0, W, H)
+
+    // Axes
+    ctx.strokeStyle = '#1a3040'
+    ctx.lineWidth = 1
+    ctx.beginPath(); ctx.moveTo(W/2, 0); ctx.lineTo(W/2, H); ctx.stroke()  // h=0
+    ctx.beginPath(); ctx.moveTo(0, H/2); ctx.lineTo(W, H/2); ctx.stroke()  // Δy=0
+
+    if (fanData.length === 0) {
+      ctx.fillStyle = '#4a6a7a'
+      ctx.font = '10px monospace'; ctx.textAlign = 'center'
+      ctx.fillText('Aucune donnée', W/2, H/2 + 4)
+      return
+    }
+
+    // Plage Y en µm
+    const allDeltaUm = fanData.flatMap(c => c.points.map(p => p.deltaY * mmPerPx * 1000))
+    const maxAbsUm = Math.max(Math.abs(Math.min(...allDeltaUm)), Math.abs(Math.max(...allDeltaUm)), 0.001)
+    const rangeUm  = maxAbsUm * 1.3
+
+    function toCanvasX(h: number)  { return W/2 + (h / 1) * (W/2 - PAD) }
+    function toCanvasY(um: number) { return H/2 - (um / rangeUm) * (H/2 - PAD) }
+
+    for (const curve of fanData) {
+      const color = wavelengthToColor(curve.wavelength, 0.9)
+      ctx.strokeStyle = color
+      ctx.lineWidth   = 1.5
+      ctx.beginPath()
+      let first = true
+      for (const pt of curve.points) {
+        const cx = toCanvasX(pt.h)
+        const cy = toCanvasY(pt.deltaY * mmPerPx * 1000)
+        if (first) { ctx.moveTo(cx, cy); first = false } else { ctx.lineTo(cx, cy) }
+      }
+      ctx.stroke()
+    }
+
+    // Barre d'échelle Y
+    const scaleUm = (() => {
+      const mag = Math.pow(10, Math.floor(Math.log10(rangeUm)))
+      return [mag, mag*2, mag*5].find(c => c/rangeUm < 0.4) ?? mag
+    })()
+    const scaleH = (scaleUm / rangeUm) * (H/2 - PAD)
+    ctx.strokeStyle = '#8bb8f8'; ctx.lineWidth = 2
+    ctx.beginPath(); ctx.moveTo(W-6, H/2); ctx.lineTo(W-6, H/2 - scaleH); ctx.stroke()
+    ctx.fillStyle = '#8bb8f8'; ctx.font = '8px monospace'; ctx.textAlign = 'right'
+    ctx.fillText(`${scaleUm < 1 ? scaleUm.toFixed(2) : scaleUm} µm`, W-8, H/2 - scaleH/2 + 3)
+
+    // Labels h
+    ctx.fillStyle = '#4a6a7a'; ctx.font = '8px monospace'; ctx.textAlign = 'center'
+    ctx.fillText('h=−1', PAD, H-3)
+    ctx.fillText('h=+1', W-PAD, H-3)
+  }, [fanData, mmPerPx])
+
+  // ── Dessin de la LCA ───────────────────────────────────────────────────────
+  useEffect(() => {
+    const canvas = lcaRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    const W = canvas.width, H = canvas.height
+    const PAD = 18
+
+    ctx.fillStyle = '#0a1520'
+    ctx.fillRect(0, 0, W, H)
+
+    // Axe horizontal Δfocus=0
+    ctx.strokeStyle = '#1a3040'; ctx.lineWidth = 1
+    ctx.beginPath(); ctx.moveTo(0, H/2); ctx.lineTo(W, H/2); ctx.stroke()
+
+    if (lcaData.length < 2) {
+      ctx.fillStyle = '#4a6a7a'; ctx.font = '10px monospace'; ctx.textAlign = 'center'
+      ctx.fillText('Aucune donnée', W/2, H/2 + 4)
+      return
+    }
+
+    // Référence : focus à 550 nm (ou median)
+    const ref550 = lcaData.find(p => Math.abs(p.wavelength - 550) < 30) ?? lcaData[Math.floor(lcaData.length/2)]
+    const shifts = lcaData.map(p => (p.focusX - ref550.focusX) * mmPerPx * 1000)  // µm
+    const maxAbsUm = Math.max(Math.abs(Math.min(...shifts)), Math.abs(Math.max(...shifts)), 0.001)
+    const rangeUm  = maxAbsUm * 1.3
+
+    const wlMin = 440, wlMax = 700
+    function toX(wl: number)   { return PAD + ((wl - wlMin) / (wlMax - wlMin)) * (W - 2*PAD) }
+    function toY(shiftUm: number) { return H/2 - (shiftUm / rangeUm) * (H/2 - PAD) }
+
+    // Courbe de focus en fonction de λ
+    ctx.lineWidth = 1.5
+    ctx.beginPath()
+    let first = true
+    for (let i = 0; i < lcaData.length; i++) {
+      const cx = toX(lcaData[i].wavelength)
+      const cy = toY(shifts[i])
+      const c = wavelengthToColor(lcaData[i].wavelength, 0.9)
+      if (first) { ctx.strokeStyle = c; ctx.moveTo(cx, cy); first = false }
+      else {
+        ctx.strokeStyle = c
+        ctx.lineTo(cx, cy)
+        ctx.stroke()
+        ctx.beginPath(); ctx.moveTo(cx, cy)
+      }
+    }
+    ctx.stroke()
+
+    // Points colorés par λ
+    for (let i = 0; i < lcaData.length; i++) {
+      ctx.fillStyle = wavelengthToColor(lcaData[i].wavelength, 1)
+      ctx.beginPath(); ctx.arc(toX(lcaData[i].wavelength), toY(shifts[i]), 2.5, 0, Math.PI*2); ctx.fill()
+    }
+
+    // Barre d'échelle
+    const scaleUm = (() => {
+      const mag = Math.pow(10, Math.floor(Math.log10(rangeUm)))
+      return [mag, mag*2, mag*5].find(c => c/rangeUm < 0.4) ?? mag
+    })()
+    const scaleH = (scaleUm / rangeUm) * (H/2 - PAD)
+    ctx.strokeStyle = '#8bb8f8'; ctx.lineWidth = 2
+    ctx.beginPath(); ctx.moveTo(W-6, H/2); ctx.lineTo(W-6, H/2 - scaleH); ctx.stroke()
+    ctx.fillStyle = '#8bb8f8'; ctx.font = '8px monospace'; ctx.textAlign = 'right'
+    ctx.fillText(`${scaleUm < 1 ? scaleUm.toFixed(2) : scaleUm} µm`, W-8, H/2 - scaleH/2 + 3)
+
+    // Étiquettes λ
+    ctx.font = '8px monospace'; ctx.textAlign = 'center'
+    for (const wl of [440, 550, 656, 700]) {
+      const cx = toX(wl)
+      if (cx < PAD || cx > W-PAD) continue
+      ctx.fillStyle = wavelengthToColor(wl, 0.7)
+      ctx.fillText(`${wl}`, cx, H-3)
+    }
+  }, [lcaData, mmPerPx])
 
   // ── Dessin du spot diagram ─────────────────────────────────────────────────
   useEffect(() => {
@@ -831,6 +986,36 @@ function ImagePlanePanel({
         <span className="prop-value" style={{ color: '#8bb8f8' }}>{spotData.points.length}</span>
       </div>
     </div>
+
+    {/* Ray fan */}
+    <div className="props-section">Ray fan  Δy(h)</div>
+    <canvas
+      ref={fanRef}
+      width={200} height={120}
+      style={{ display: 'block', margin: '4px auto', borderRadius: 4, border: '1px solid #1e3040' }}
+    />
+
+    {/* LCA */}
+    <div className="props-section">Chromatique longitudinale</div>
+    <canvas
+      ref={lcaRef}
+      width={200} height={100}
+      style={{ display: 'block', margin: '4px auto', borderRadius: 4, border: '1px solid #1e3040' }}
+    />
+    {lcaData.length >= 2 && (() => {
+      const focii = lcaData.map(p => p.focusX)
+      const lcaUm = (Math.max(...focii) - Math.min(...focii)) * mmPerPx * 1000
+      return (
+        <div className="prop-row">
+          <div className="prop-header">
+            <span className="prop-label">ACL (440–700 nm)</span>
+            <span className="prop-value" style={{ color: lcaUm < 10 ? '#40e080' : lcaUm < 100 ? '#f0c040' : '#f06060' }}>
+              {lcaUm < 0.1 ? lcaUm.toExponential(2) : lcaUm.toFixed(1)} µm
+            </span>
+          </div>
+        </div>
+      )
+    })()}
   </>
 }
 
@@ -876,7 +1061,7 @@ export function PropertiesPanel({ scene, selectedId, onUpdate, onDelete, useMm, 
     if (el instanceof ThickLens)     return <ThickLensPanel     el={el}  onUpdate={onUpdate} u={u} />
     if (el instanceof ConicMirror)   return <ConicMirrorPanel   el={el}  onUpdate={onUpdate} u={u} />
     if (el instanceof GRINElement)   return <GRINMediumPanel    el={el}  onUpdate={onUpdate} u={u} />
-    if (el instanceof ImagePlane)    return <ImagePlanePanel    el={el}  onUpdate={onUpdate} u={u} mmPerPx={scale ?? 1} results={traceResults ?? []} />
+    if (el instanceof ImagePlane)    return <ImagePlanePanel    el={el}  onUpdate={onUpdate} u={u} mmPerPx={scale ?? 1} results={traceResults ?? []} scene={scene} />
     return null
   }
 
