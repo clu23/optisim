@@ -197,7 +197,7 @@ export default function App() {
 
   // React state — drives UI re-renders (panel + toolbar)
   const [selectedId, setSelectedId]         = useState<string | null>(null)
-  const [version, setVersion]               = useState(0)  // bump to refresh panel
+  const [, setVersion]                      = useState(0)  // bump to trigger re-render
   const [measureModeUI, setMeasureModeUI]   = useState(false)
   const [useMm, setUseMm]                   = useState(false)
   const [showPrescription, setShowPrescription] = useState(false)
@@ -429,10 +429,10 @@ export default function App() {
     }
     if (d.isSource) {
       const src = sceneRef.current.sources.find(s => s.id === d.id)
-      if (src) src.position = newPos
+      if (src) { src.position = newPos; bump() }
     } else {
       const el = sceneRef.current.elements.find(x => x.id === d.id)
-      if (el) el.position = newPos
+      if (el) { el.position = newPos; bump() }
     }
   }
 
@@ -499,9 +499,9 @@ export default function App() {
         onToggleMm={() => setUseMm(v => !v)}
       />
 
-      {/* key=selectedId+version forces React to re-mount panel on target change */}
+      {/* key=selectedId remounts panel when selected element changes */}
       <PropertiesPanel
-        key={`${selectedId}-${version}`}
+        key={selectedId}
         scene={sceneRef.current}
         selectedId={selectedId}
         onUpdate={bump}
