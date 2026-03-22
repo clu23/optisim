@@ -21,7 +21,7 @@ import { OpticalObject } from '../core/elements/optical-object.ts'
 import { wavelengthToColor } from '../renderer/canvas-renderer.ts'
 import { MATERIALS, referenceIndex, type MaterialId } from '../core/dispersion.ts'
 import { GLASS_CATALOG, sellmeierIndex, LAMBDA_D } from '../core/glass-catalog.ts'
-import { optimizeScene, makeRmsMetric } from '../core/optimizer.ts'
+import { optimizeScene, makeRmsMetric, goldenSectionSearch } from '../core/optimizer.ts'
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -863,9 +863,18 @@ function ImagePlanePanel({
   scene: import('../core/types.ts').Scene | null
 }) {
   const spotData = collectSpots(el, results)
-  const spotRef    = useRef<HTMLCanvasElement>(null)
-  const fanRef     = useRef<HTMLCanvasElement>(null)
-  const lcaRef     = useRef<HTMLCanvasElement>(null)
+  const spotRef       = useRef<HTMLCanvasElement>(null)
+  const fanRef        = useRef<HTMLCanvasElement>(null)
+  const lcaRef        = useRef<HTMLCanvasElement>(null)
+  const focusCurveRef = useRef<HTMLCanvasElement>(null)
+
+  const [focusResult, setFocusResult] = useState<{
+    rmsBefore: number               // µm, position avant auto-focus
+    rmsAfter:  number               // µm, position optimale
+    origX:     number               // position initiale en unités display
+    optX:      number               // position optimale en unités display
+    curve:     { x: number; rms: number }[]  // courbe RMS(x), rms en µm
+  } | null>(null)
 
   // Axial position = projection de position sur l'axe optique
   const axialPx  = el.position.x * el.axisDir.x + el.position.y * el.axisDir.y
@@ -880,12 +889,145 @@ function ImagePlanePanel({
     onUpdate()
   }
 
+  // ── Auto-focus : GSS sur la position axiale, rayons filtrés ───────────────
+  //
+  // Rayons valides : ≥2 segments (a traversé au moins une surface réfractante)
+  // ET intensité du dernier segment > 0.5 (élimine les reflets Fresnel).
+  // Pas besoin de re-tracer : ImagePlane est transparent, on déplace le plan
+  // et on recalcule les intersections avec les segments déjà tracés.
+  function handleAutoFocus() {
+    if (!results.length) return
+    const valid = results.filter(r =>
+      r.segments.length >= 2 &&
+      r.segments[r.segments.length - 1].intensity > 0.5,
+    )
+    if (!valid.length) return
+
+    const origPos   = { ...el.position }
+    const axDir     = el.axisDir           // constant (dépend de el.angle)
+    const currentAx = origPos.x * axDir.x + origPos.y * axDir.y
+    const halfRange = u.toI(500)           // ±500 unités display → pixels internes
+
+    function evalAt(ax: number): number {
+      const d = ax - currentAx
+      el.position = { x: origPos.x + d * axDir.x, y: origPos.y + d * axDir.y }
+      const s = collectSpots(el, valid)
+      return s.rmsRadius > 0 ? s.rmsRadius : Infinity
+    }
+
+    // RMS au point de départ
+    const rmsBefore = evalAt(currentAx) * mmPerPx * 1000
+
+    // Balayage 61 points → courbe de focus
+    const N = 60
+    const curve: { x: number; rms: number }[] = []
+    for (let i = 0; i <= N; i++) {
+      const ax = currentAx - halfRange + (2 * halfRange * i) / N
+      const r  = evalAt(ax)
+      curve.push({ x: u.toD(ax), rms: r === Infinity ? 0 : r * mmPerPx * 1000 })
+    }
+
+    // Recherche par section dorée sur le même intervalle
+    const { x: optAx } = goldenSectionSearch(evalAt, currentAx - halfRange, currentAx + halfRange, 0.1, 80)
+
+    // Applique la position optimale
+    const dOpt = optAx - currentAx
+    el.position = { x: origPos.x + dOpt * axDir.x, y: origPos.y + dOpt * axDir.y }
+    const rmsAfter = collectSpots(el, valid).rmsRadius * mmPerPx * 1000
+
+    setFocusResult({ rmsBefore, rmsAfter, origX: u.toD(currentAx), optX: u.toD(optAx), curve })
+    onUpdate()
+  }
+
   // ── Ray fan et LCA (calculés depuis la scène + rayons paraxiaux) ──────────
   const wavelengthsInScene = [...new Set(results.flatMap(r => r.segments.map(s => s.wavelength)))].sort((a,b)=>a-b)
   const fanCfg  = scene ? autoRayFanConfig(scene, el, wavelengthsInScene.length > 0 ? wavelengthsInScene : [550]) : null
   const lcaCfg  = scene && fanCfg ? { pupilX: fanCfg.pupilX, pupilRadius: fanCfg.pupilRadius, rayDir: fanCfg.rayDir, wavelengths: LCA_WAVELENGTHS } : null
   const fanData = scene && fanCfg ? computeRayFan(scene, el, fanCfg) : []
   const lcaData = scene && lcaCfg ? computeLCA(scene, lcaCfg)        : []
+
+  // ── Dessin de la courbe RMS vs position (auto-focus) ─────────────────────
+  useEffect(() => {
+    const canvas = focusCurveRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    const W = canvas.width, H = canvas.height
+    const PAD = 18
+
+    ctx.fillStyle = '#0a1520'
+    ctx.fillRect(0, 0, W, H)
+
+    if (!focusResult) {
+      ctx.fillStyle = '#4a6a7a'
+      ctx.font = '10px monospace'; ctx.textAlign = 'center'
+      ctx.fillText('Cliquer Auto-focus', W/2, H/2 + 4)
+      return
+    }
+
+    const { curve, origX, optX } = focusResult
+    const validPts = curve.filter(p => p.rms > 0)
+    if (validPts.length < 2) {
+      ctx.fillStyle = '#4a6a7a'
+      ctx.font = '10px monospace'; ctx.textAlign = 'center'
+      ctx.fillText('Aucun rayon valide', W/2, H/2 + 4)
+      return
+    }
+
+    const xMin = curve[0].x, xMax = curve[curve.length - 1].x
+    const rmsMax = Math.max(...validPts.map(p => p.rms), 0.001)
+
+    function toCanvasX(x: number) { return PAD + ((x - xMin) / (xMax - xMin)) * (W - 2*PAD) }
+    function toCanvasY(r: number) { return H - PAD - (r / (rmsMax * 1.1)) * (H - 2*PAD) }
+
+    // Axe bas
+    ctx.strokeStyle = '#1a3040'; ctx.lineWidth = 1
+    ctx.beginPath(); ctx.moveTo(PAD, H-PAD); ctx.lineTo(W-PAD, H-PAD); ctx.stroke()
+
+    // Courbe RMS
+    ctx.strokeStyle = '#60a8f8'; ctx.lineWidth = 1.5
+    ctx.beginPath()
+    let first = true
+    for (const pt of curve) {
+      if (pt.rms <= 0) { first = true; continue }
+      const cx = toCanvasX(pt.x)
+      const cy = toCanvasY(pt.rms)
+      if (first) { ctx.moveTo(cx, cy); first = false } else { ctx.lineTo(cx, cy) }
+    }
+    ctx.stroke()
+
+    // Ligne position initiale (jaune tiretée)
+    ctx.strokeStyle = '#f0c040'; ctx.lineWidth = 1; ctx.setLineDash([4, 3])
+    const cx0 = toCanvasX(origX)
+    ctx.beginPath(); ctx.moveTo(cx0, PAD); ctx.lineTo(cx0, H-PAD); ctx.stroke()
+    ctx.setLineDash([])
+
+    // Ligne position optimale (verte)
+    ctx.strokeStyle = '#40e080'; ctx.lineWidth = 1.5
+    const cxOpt = toCanvasX(optX)
+    ctx.beginPath(); ctx.moveTo(cxOpt, PAD); ctx.lineTo(cxOpt, H-PAD); ctx.stroke()
+
+    // Point minimum sur la courbe
+    const minPt = validPts.reduce((b, p) => p.rms < b.rms ? p : b, validPts[0])
+    ctx.fillStyle = '#40e080'
+    ctx.beginPath(); ctx.arc(toCanvasX(minPt.x), toCanvasY(minPt.rms), 3, 0, Math.PI*2); ctx.fill()
+
+    // Barre d'échelle RMS (Y)
+    const scaleUm = (() => {
+      const mag = Math.pow(10, Math.floor(Math.log10(rmsMax)))
+      return [mag, mag*2, mag*5].find(c => c/rmsMax < 0.5) ?? mag
+    })()
+    const scaleH = (scaleUm / (rmsMax * 1.1)) * (H - 2*PAD)
+    ctx.strokeStyle = '#8bb8f8'; ctx.lineWidth = 2
+    ctx.beginPath(); ctx.moveTo(W-6, H-PAD); ctx.lineTo(W-6, H-PAD - scaleH); ctx.stroke()
+    ctx.fillStyle = '#8bb8f8'; ctx.font = '8px monospace'; ctx.textAlign = 'right'
+    ctx.fillText(`${scaleUm < 1 ? scaleUm.toFixed(2) : scaleUm} µm`, W-8, H-PAD - scaleH/2 + 3)
+
+    // Labels X (position axiale)
+    ctx.fillStyle = '#4a6a7a'; ctx.font = '8px monospace'; ctx.textAlign = 'center'
+    ctx.fillText(`${xMin.toFixed(0)}`, PAD + 8, H - 3)
+    ctx.fillText(`${xMax.toFixed(0)}`, W - PAD - 8, H - 3)
+  }, [focusResult])
 
   // ── Dessin du ray fan ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -1160,6 +1302,50 @@ function ImagePlanePanel({
         <span className="prop-value" style={{ color: '#8bb8f8' }}>{spotData.points.length}</span>
       </div>
     </div>
+
+    {/* Auto-focus */}
+    <div className="props-section">Mise au point auto</div>
+    <div style={{ display: 'flex', justifyContent: 'center', margin: '4px 0' }}>
+      <button
+        onClick={handleAutoFocus}
+        style={{
+          width: '80%', padding: '5px 0', cursor: 'pointer',
+          background: 'rgba(40,120,255,0.25)', border: '1px solid rgba(96,200,255,0.5)',
+          borderRadius: 4, color: '#c8e8ff', fontSize: 12, fontWeight: 700,
+        }}
+      >
+        ⊕ Auto-focus
+      </button>
+    </div>
+    {focusResult && <>
+      <div className="prop-row">
+        <div className="prop-header">
+          <span className="prop-label">RMS avant</span>
+          <span className="prop-value" style={{ color: '#f0c040' }}>
+            {focusResult.rmsBefore < 0.01
+              ? focusResult.rmsBefore.toExponential(2)
+              : focusResult.rmsBefore.toFixed(2)} µm
+          </span>
+        </div>
+      </div>
+      <div className="prop-row">
+        <div className="prop-header">
+          <span className="prop-label">RMS après</span>
+          <span className="prop-value" style={{
+            color: focusResult.rmsAfter <= focusResult.rmsBefore ? '#40e080' : '#f06060',
+          }}>
+            {focusResult.rmsAfter < 0.01
+              ? focusResult.rmsAfter.toExponential(2)
+              : focusResult.rmsAfter.toFixed(2)} µm
+          </span>
+        </div>
+      </div>
+    </>}
+    <canvas
+      ref={focusCurveRef}
+      width={200} height={100}
+      style={{ display: 'block', margin: '4px auto', borderRadius: 4, border: '1px solid #1e3040' }}
+    />
 
     {/* Ray fan */}
     <div className="props-section">Ray fan  Δy(h)</div>
