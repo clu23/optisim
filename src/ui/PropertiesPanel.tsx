@@ -906,7 +906,13 @@ function ImagePlanePanel({
     const origPos   = { ...el.position }
     const axDir     = el.axisDir           // constant (dépend de el.angle)
     const currentAx = origPos.x * axDir.x + origPos.y * axDir.y
-    const halfRange = u.toI(500)           // ±500 unités display → pixels internes
+
+    // Borne inférieure : x du début du dernier segment de chaque rayon valide.
+    // Ce point est juste après la dernière surface traversée → pas de sens
+    // physique de chercher un foyer avant cette position.
+    const lastOpticalX = Math.max(...valid.map(r => r.segments[r.segments.length - 1].start.x))
+    const lo = lastOpticalX + u.toI(1)   // 1mm de marge après la dernière surface
+    const hi = lo + u.toI(500)           // plage de +500mm vers la droite
 
     function evalAt(ax: number): number {
       const d = ax - currentAx
@@ -915,20 +921,20 @@ function ImagePlanePanel({
       return s.rmsRadius > 0 ? s.rmsRadius : Infinity
     }
 
-    // RMS au point de départ
+    // RMS à la position actuelle (peut être hors plage, sert uniquement à l'affichage)
     const rmsBefore = evalAt(currentAx) * mmPerPx * 1000
 
-    // Balayage 61 points → courbe de focus
+    // Balayage 61 points sur [lo, hi] → courbe de focus
     const N = 60
     const curve: { x: number; rms: number }[] = []
     for (let i = 0; i <= N; i++) {
-      const ax = currentAx - halfRange + (2 * halfRange * i) / N
+      const ax = lo + (hi - lo) * i / N
       const r  = evalAt(ax)
       curve.push({ x: u.toD(ax), rms: r === Infinity ? 0 : r * mmPerPx * 1000 })
     }
 
-    // Recherche par section dorée sur le même intervalle
-    const { x: optAx } = goldenSectionSearch(evalAt, currentAx - halfRange, currentAx + halfRange, 0.1, 80)
+    // Recherche par section dorée sur [lo, hi]
+    const { x: optAx } = goldenSectionSearch(evalAt, lo, hi, 0.1, 80)
 
     // Applique la position optimale
     const dOpt = optAx - currentAx
