@@ -7,6 +7,8 @@ import { CurvedMirror } from '../core/elements/curved-mirror.ts'
 import { ConicMirror } from '../core/elements/conic-mirror.ts'
 import { ThickLens } from '../core/elements/thick-lens.ts'
 import { GRINElement } from '../core/elements/grin-medium.ts'
+import { ApertureElement } from '../core/elements/aperture.ts'
+import { ImagePlane } from '../core/elements/image-plane.ts'
 import { BeamSource } from '../core/sources/beam.ts'
 import { PointSource } from '../core/sources/point-source.ts'
 
@@ -375,6 +377,90 @@ function achromaticDoublet(w: number, h: number): Scene {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+function fraunhoferDoubletF4(w: number, h: number): Scene {
+  // Doublet de Fraunhofer f=100mm, f/4
+  // ──────────────────────────────────────────────────────────────────────────
+  // Design issu de la condition de Fraunhofer : φ₁/ν₁ + φ₂/ν₂ = 0
+  //   ν_BK7 = 64.17, ν_SF11 = 25.76
+  //   φ₁ = φ_total / (1 − ν₂/ν₁) = 0.01 / 0.5986 → f₁ ≈ 59.9mm
+  //   φ₂ = −φ₁ · ν₂/ν₁ → f₂ ≈ −149.1mm
+  //
+  // N-BK7 (couronne)   : quasi-symétrique, R1=+61.47mm, R2=+62.3mm (TL),
+  //                       R2_std=−62.3mm, t=6mm, f₁≈59.9mm
+  // N-SF11 (flint)     : plano-concave, R1=+5000mm (≈∞), R2=−117.1mm (TL),
+  //                       R2_std=+117.1mm, t=2mm, f₂≈−149.1mm
+  //
+  // Convention ThickLens : R2_TL = −R2_std
+  // Gap de 1mm entre les deux verres (évite les problèmes numériques).
+  // Unités : mm (scale=1, 1 px = 1 mm)
+  // ──────────────────────────────────────────────────────────────────────────
+  const cx  = w / 2 - 60, cy = h / 2
+  const halfH = 12.5   // Demi-ouverture φ25mm → 12.5 mm
+  const t1  = 6        // Épaisseur BK7 (mm)
+  const t2  = 2        // Épaisseur SF11 (mm)
+  const gap = 1        // Gap d'air entre les deux éléments (mm)
+
+  // N-BK7 : centre à cx
+  //   vertex1 = cx − 3  vertex2 = cx + 3
+  const bk7 = new ThickLens({
+    id: 'bk7', label: 'N-BK7',
+    position: { x: cx, y: cy }, angle: 0,
+    R1: 61.47, R2: 62.3,
+    kappa1: 0, kappa2: 0,
+    thickness: t1, halfHeight: halfH,
+    n: 1.5168, glassId: 'N-BK7',
+  })
+
+  // N-SF11 : centre à cx + t1/2 + gap + t2/2
+  //   vertex1 = cx + 4  vertex2 = cx + 6
+  const sf11 = new ThickLens({
+    id: 'sf11', label: 'N-SF11',
+    position: { x: cx + t1 / 2 + gap + t2 / 2, y: cy }, angle: 0,
+    R1: 5000, R2: -117.1,
+    kappa1: 0, kappa2: 0,
+    thickness: t2, halfHeight: halfH,
+    n: 1.7847, glassId: 'N-SF11',
+  })
+
+  // Diaphragme : 2mm avant la face avant du doublet
+  const aperture = new ApertureElement({
+    id: 'stop', label: 'Diaphragme φ25mm',
+    position: { x: cx - t1 / 2 - 2, y: cy }, angle: 0,
+    diameter: 28, clearRadius: halfH,
+  })
+
+  // Plan image : vertex2(SF11) = cx + t1/2 + gap + t2 = cx + 6, puis + BFD ≈ 95mm
+  const v2sf11 = cx + t1 / 2 + gap + t2
+  const imagePlane = new ImagePlane({
+    id: 'image', label: 'Plan image',
+    position: { x: v2sf11 + 95, y: cy }, angle: 0,
+    height: 20,
+  })
+
+  return {
+    elements: [aperture, bk7, sf11, imagePlane],
+    sources: [
+      new BeamSource({
+        id: 'beam-1',
+        position: { x: cx - 200, y: cy },
+        angle: 0,
+        wavelengths: [486, 546, 587, 630, 656],
+        numRays: 7,
+        width: 25,
+      }),
+    ],
+    metadata: {
+      name: 'Doublet de Fraunhofer f/4',
+      description:
+        'N-BK7 (f₁≈60mm, R1=+61.47, R2=−62.3mm) + N-SF11 (f₂≈−149mm, plano-concave) séparés de 1mm. ' +
+        'f_total≈100mm. Condition de Fraunhofer : φ₁/ν₁ + φ₂/ν₂ = 0. LCA(F−C) < 0.5mm. Unités mm.',
+      units: { scale: 1, displayUnit: 'mm' },
+    },
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 export const PRESETS: Preset[] = [
   { id: 'prism',      label: 'Dispersion — Prisme',       make: prismDispersion },
   { id: 'diamond',    label: 'Dispersion — Diamant',      make: diamondDispersion },
@@ -389,4 +475,5 @@ export const PRESETS: Preset[] = [
   { id: 'newton',     label: 'Télescope de Newton',        make: newtonTelescope },
   { id: 'cassegrain', label: 'Télescope de Cassegrain',    make: cassegrainTelescope },
   { id: 'achromat',   label: 'Doublet achromatique',       make: achromaticDoublet },
+  { id: 'fraunhofer', label: 'Doublet de Fraunhofer f/4',  make: fraunhoferDoubletF4 },
 ]
