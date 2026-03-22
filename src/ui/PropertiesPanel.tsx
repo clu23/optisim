@@ -874,6 +874,8 @@ function ImagePlanePanel({
     origX:     number               // position initiale en unités display
     optX:      number               // position optimale en unités display
     curve:     { x: number; rms: number }[]  // courbe RMS(x), rms en µm
+    nRays:     number               // nombre de rayons utilisés
+    fallback:  boolean              // true = filtre insuffisant, fallback tous rayons
   } | null>(null)
 
   // Axial position = projection de position sur l'axe optique
@@ -897,10 +899,19 @@ function ImagePlanePanel({
   // et on recalcule les intersections avec les segments déjà tracés.
   function handleAutoFocus() {
     if (!results.length) return
-    const valid = results.filter(r =>
+
+    // Filtre : rayons ayant traversé au moins une surface réfractante (≥2 segments)
+    // ET intensité principale > 10% (élimine les reflets Fresnel ~4%, garde les
+    // transmissions même avec plusieurs surfaces ou coating partiel).
+    const filtered = results.filter(r =>
       r.segments.length >= 2 &&
-      r.segments[r.segments.length - 1].intensity > 0.5,
+      r.segments[r.segments.length - 1].intensity > 0.1,
     )
+
+    // Garde-fou : si moins de 3 rayons passent le filtre, on utilise tous les
+    // rayons (sans filtre) pour ne pas travailler sur un échantillon trop petit.
+    const fallback = filtered.length < 3
+    const valid    = fallback ? results : filtered
     if (!valid.length) return
 
     const origPos   = { ...el.position }
@@ -941,7 +952,7 @@ function ImagePlanePanel({
     el.position = { x: origPos.x + dOpt * axDir.x, y: origPos.y + dOpt * axDir.y }
     const rmsAfter = collectSpots(el, valid).rmsRadius * mmPerPx * 1000
 
-    setFocusResult({ rmsBefore, rmsAfter, origX: u.toD(currentAx), optX: u.toD(optAx), curve })
+    setFocusResult({ rmsBefore, rmsAfter, origX: u.toD(currentAx), optX: u.toD(optAx), curve, nRays: valid.length, fallback })
     onUpdate()
   }
 
@@ -1346,6 +1357,21 @@ function ImagePlanePanel({
           </span>
         </div>
       </div>
+      <div className="prop-row">
+        <div className="prop-header">
+          <span className="prop-label">Rayons utilisés</span>
+          <span className="prop-value" style={{ color: '#8bb8f8' }}>{focusResult.nRays}</span>
+        </div>
+      </div>
+      {focusResult.fallback && (
+        <div style={{
+          margin: '2px 8px 4px', padding: '3px 6px', borderRadius: 3,
+          background: 'rgba(240,160,40,0.15)', border: '1px solid rgba(240,160,40,0.4)',
+          color: '#f0a028', fontSize: 10, lineHeight: 1.4,
+        }}>
+          ⚠ Filtre insuffisant — tous les rayons utilisés
+        </div>
+      )}
     </>}
     <canvas
       ref={focusCurveRef}
