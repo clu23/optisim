@@ -9,6 +9,7 @@ import { ThickLens } from '../core/elements/thick-lens.ts'
 import { GRINElement } from '../core/elements/grin-medium.ts'
 import { ApertureElement } from '../core/elements/aperture.ts'
 import { ImagePlane } from '../core/elements/image-plane.ts'
+import { OpticalObject } from '../core/elements/optical-object.ts'
 import { BeamSource } from '../core/sources/beam.ts'
 import { PointSource } from '../core/sources/point-source.ts'
 
@@ -489,26 +490,37 @@ function loupeFiveX(w: number, h: number): Scene {
     n: 1.5168, glassId: 'N-BK7',
   })
 
-  // Objet fini à u = 50mm (≈ foyer objet) — source ponctuelle centrée
-  const objX = cx - 50
+  // Objet fini 200mm avant V1 (V1 = cx − t/2 = cx − 3)
+  // u=200mm → image paraxiale à v ≈ 68mm après H' ≈ cx+70mm (BFD ≈ 65mm depuis V2)
+  const objX = cx - t / 2 - 200   // = cx − 203
+
+  const obj = new OpticalObject({
+    id: 'obj', label: 'Flèche objet',
+    position: { x: objX, y: cy },
+    angle: 0,
+    mode: 'finite',
+    height: 5,                    // 5mm
+    numRays: 7,
+    spreadAngle: Math.PI / 18,    // 10°
+    numFieldPoints: 1,
+    wavelengths: [555],
+  })
+
+  // Plan image : position théorique ≈ cx + 70mm (v ≈ 68mm depuis H', BFD ≈ 65mm)
+  const imagePlane = new ImagePlane({
+    id: 'image', label: 'Plan image',
+    position: { x: cx + 70, y: cy }, angle: 0,
+    height: 20,
+  })
 
   return {
-    elements: [lens],
-    sources: [
-      new PointSource({
-        id: 'obj',
-        position: { x: objX, y: cy },
-        angle: 0,
-        numRays: 9,
-        spreadAngle: Math.atan2(halfH, 50) * 2,
-        wavelengths: [555],
-      }),
-    ],
+    elements: [lens, imagePlane],
+    sources: [obj],
     metadata: {
       name: 'Loupe 5× (N-BK7, f≈50mm)',
       description:
-        'Biconvexe symétrique R1=R2=+51.7mm (convention TL), R2_std=−51.7mm, ' +
-        'N-BK7, t=6mm. f≈50mm. Grossissement 5× (M=D/f=250/50). Objet au foyer → image à l\'infini. Unités mm.',
+        'Biconvexe symétrique R1=R2=+51.7mm (convention TL), N-BK7, t=6mm. f≈50mm. ' +
+        'Objet à u=200mm (flèche 5mm) → image réelle à v≈68mm. Grossissement ≈−0.34×. Unités mm.',
       units: { scale: 1, displayUnit: 'mm' },
     },
   }
