@@ -449,6 +449,7 @@ export default function App() {
     sceneRef.current = preset.make(canvas.width, canvas.height)
     viewRef.current  = fitScene(sceneRef.current, canvas.width, canvas.height)
     setSelectedId(null)
+    setUseMm(sceneRef.current.metadata.units != null)
     bump()
   }
 
