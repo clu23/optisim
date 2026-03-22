@@ -37,7 +37,7 @@ export interface OpticalObjectParams {
   height:          number
   /** Nombre de rayons par point objet et par longueur d'onde. Défaut : 5. */
   numRays?:        number
-  /** Demi-angle d'éventail au point objet (rad). Défaut : π/4 = 45°. */
+  /** Demi-angle d'éventail au point objet (rad). Défaut : π/18 = 10°. */
   spreadAngle?:    number
   /** Nombre de points de champ : 1 (sommet seul), 2 (+base), 3 (+mi). Défaut : 1. */
   numFieldPoints?: number
@@ -71,7 +71,7 @@ export class OpticalObject implements LightSource {
     this.mode           = p.mode
     this.height         = p.height
     this.numRays        = p.numRays        ?? 5
-    this.spreadAngle    = p.spreadAngle    ?? Math.PI / 4
+    this.spreadAngle    = p.spreadAngle    ?? Math.PI / 18   // 10°
     this.numFieldPoints = p.numFieldPoints ?? 1
     this.width          = p.width          ?? 200
     this.wavelengths    = [...p.wavelengths]

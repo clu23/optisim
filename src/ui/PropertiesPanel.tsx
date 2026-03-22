@@ -627,7 +627,7 @@ function BlockPanel({ el, onUpdate, u }: { el: Block; onUpdate: () => void; u: U
       <Slider label="Indice n" value={el.n} min={1.0} max={2.5} step={0.01} digits={2}
         onChange={v => { el.n = v; onUpdate() }} />
     )}
-    <Slider label="Absorption α" value={el.absorptionCoeff} min={0} max={0.05} step={0.0005} digits={4} unit=" px⁻¹"
+    <Slider label="Absorption α" value={el.absorptionCoeff} min={0} max={0.05} step={0.0005} digits={4} unit={u.unit + '⁻¹'}
       onChange={v => { el.absorptionCoeff = v; onUpdate() }} />
     <CoatingToggle label="Toutes faces" coating={el.coating} onChange={c => { el.coating = c; onUpdate() }} />
   </>
@@ -648,7 +648,7 @@ function PrismPanel({ el, onUpdate, u }: { el: Prism; onUpdate: () => void; u: U
       <Slider label="Indice n" value={el.n} min={1.0} max={2.5} step={0.01} digits={2}
         onChange={v => { el.n = v; onUpdate() }} />
     )}
-    <Slider label="Absorption α" value={el.absorptionCoeff} min={0} max={0.05} step={0.0005} digits={4} unit=" px⁻¹"
+    <Slider label="Absorption α" value={el.absorptionCoeff} min={0} max={0.05} step={0.0005} digits={4} unit={u.unit + '⁻¹'}
       onChange={v => { el.absorptionCoeff = v; onUpdate() }} />
     <CoatingToggle label="Toutes faces" coating={el.coating} onChange={c => { el.coating = c; onUpdate() }} />
   </>
@@ -678,7 +678,7 @@ function ThickLensPanel({ el, onUpdate, u, scene }: { el: ThickLens; onUpdate: (
       <Slider label="Indice n" value={el.n} min={1.0} max={2.5} step={0.01} digits={2}
         onChange={v => { el.n = v; onUpdate() }} />
     )}
-    <Slider label="Absorption α" value={el.absorptionCoeff} min={0} max={0.05} step={0.0005} digits={4} unit=" px⁻¹"
+    <Slider label="Absorption α" value={el.absorptionCoeff} min={0} max={0.05} step={0.0005} digits={4} unit={u.unit + '⁻¹'}
       onChange={v => { el.absorptionCoeff = v; onUpdate() }} />
     <CoatingToggle label="S1 (avant)" coating={el.coating1} onChange={c => { el.coating1 = c; onUpdate() }} />
     <CoatingToggle label="S2 (arrière)" coating={el.coating2} onChange={c => { el.coating2 = c; onUpdate() }} />
@@ -1238,8 +1238,10 @@ function AperturePanel({ el, onUpdate, u, scene }: { el: ApertureElement; onUpda
 // ─────────────────────────────────────────────────────────────────────────────
 
 function OpticalObjectPanel({ src, onUpdate, u, scene }: { src: OpticalObject; onUpdate: () => void; u: UnitCtx; scene: Scene | null }) {
+  // La pointe de l'objet est à position.y − height (perpDir = +y avec angle=0).
+  // L'axe optique est à position.y. On passe les coordonnées absolues à computeImage.
   const imgResult = scene && src.mode === 'finite'
-    ? computeImage(scene, src.position.x, src.height, src.wavelengths[0] ?? 550)
+    ? computeImage(scene, src.position.x, src.position.y - src.height, src.wavelengths[0] ?? 550, 0.005, src.position.y)
     : null
   const efl = scene ? computeEFL(scene, src.wavelengths[0] ?? 550, src.position.x - 100, 10) : null
 

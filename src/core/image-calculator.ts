@@ -94,6 +94,8 @@ export function computeImage(
   objectY:     number,
   wavelength = 550,
   angleStep  = 0.005,
+  /** y de l'axe optique (défaut 0). Nécessaire pour les scènes dont l'axe n'est pas à y=0. */
+  axisY      = 0,
 ): ImageResult {
   // ── Rayon 1 : depuis le point objet, légèrement au-dessus de l'axe ──────────
   const ray1: Ray = {
@@ -123,14 +125,14 @@ export function computeImage(
 
   const isReal = inter.t1 > 0   // intersection en avant du dernier segment
 
-  // ── Grandissement : m = imageY / objectY ──────────────────────────────────
-  // Pour objectY=0 (axe), calculer l'image d'un point décalé de 10 px
-  // et utiliser m = imageY_décalé / 10.
+  // ── Grandissement : m = (imageY − axisY) / (objectY − axisY) ────────────
+  // Pour objectY=axisY (axe), calculer l'image d'un point décalé de 10 px
+  // au-dessus de l'axe et utiliser m = (imageY_décalé − axisY) / 10.
   let magnification: number | null = null
-  if (objectY !== 0) {
-    magnification = inter.y / objectY
+  if (objectY !== axisY) {
+    magnification = (inter.y - axisY) / (objectY - axisY)
   } else {
-    const refH = 10
+    const refH = axisY + 10
     const ray3: Ray = {
       origin:    { x: objectX, y: refH },
       direction: { x: Math.cos(angleStep), y: Math.sin(angleStep) },
@@ -147,7 +149,7 @@ export function computeImage(
     const seg4 = lastForwardSegment(traceRay(ray4, scene))
     if (seg3 && seg4) {
       const inter2 = lineIntersect(seg3.ox, seg3.oy, seg3.dx, seg3.dy, seg4.ox, seg4.oy, seg4.dx, seg4.dy)
-      if (inter2) magnification = inter2.y / refH
+      if (inter2) magnification = (inter2.y - axisY) / (refH - axisY)
     }
   }
 
