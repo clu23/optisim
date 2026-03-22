@@ -191,13 +191,19 @@ export function Toolbar({ canvasW, canvasH, onSceneRef, onAddToScene, onLoadPres
       <div className="toolbar-sep" style={{ marginLeft: 'auto' }} />
 
       {/* Unités */}
+      <span className="toolbar-label">Unités</span>
       <button
         className="toolbar-btn"
         title="Basculer entre pixels et millimètres"
         onClick={onToggleMm}
-        style={{ fontWeight: useMm ? 700 : 400, color: useMm ? '#60c8ff' : undefined }}
+        style={{
+          fontWeight: 700,
+          color: useMm ? '#60c8ff' : 'rgba(190, 215, 255, 0.88)',
+          background: useMm ? 'rgba(40, 120, 255, 0.3)' : undefined,
+          borderColor: useMm ? 'rgba(96, 200, 255, 0.6)' : undefined,
+        }}
       >
-        {useMm ? 'mm' : 'px'}
+        {useMm ? '⊞ mm' : '⊞ px'}
       </button>
 
       <div className="toolbar-sep" />

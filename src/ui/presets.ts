@@ -461,6 +461,59 @@ function fraunhoferDoubletF4(w: number, h: number): Scene {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─── Loupe 5× — N-BK7 biconvexe symétrique f≈50mm ───────────────────────────
+//
+// Convention ThickLens : R2_TL = −R2_std
+//   R1_std = +51.7mm  →  R1_TL = +51.7
+//   R2_std = −51.7mm  →  R2_TL = +51.7  ← biconvexe symétrique, les deux POSITIFS
+//
+// Calcul : 1/f = (n−1)·[1/R1 + 1/R2 − (n−1)·t/(n·R1·R2)]
+//   n=1.5168, R1=R2=51.7, t=6 → f ≈ 50.9mm
+//
+// Grossissement 5× : M = D/f = 250mm/50mm = 5 (œil relaxé, objet au foyer).
+// La scène montre un objet fini à u = f (image rejetée à l'infini).
+// Unités : mm (scale=1).
+// ─────────────────────────────────────────────────────────────────────────────
+function loupeFiveX(w: number, h: number): Scene {
+  const cx = w / 2, cy = h / 2
+  const R   = 51.7    // mm — biconvexe symétrique
+  const t   = 6       // mm — épaisseur au centre
+  const halfH = 12.5  // mm — demi-ouverture φ25mm
+
+  const lens = new ThickLens({
+    id: 'loupe', label: 'N-BK7 f≈50mm',
+    position: { x: cx, y: cy }, angle: 0,
+    R1: R, R2: R,
+    kappa1: 0, kappa2: 0,
+    thickness: t, halfHeight: halfH,
+    n: 1.5168, glassId: 'N-BK7',
+  })
+
+  // Objet fini à u = 50mm (≈ foyer objet) — source ponctuelle centrée
+  const objX = cx - 50
+
+  return {
+    elements: [lens],
+    sources: [
+      new PointSource({
+        id: 'obj',
+        position: { x: objX, y: cy },
+        angle: 0,
+        numRays: 9,
+        spreadAngle: Math.atan2(halfH, 50) * 2,
+        wavelengths: [555],
+      }),
+    ],
+    metadata: {
+      name: 'Loupe 5× (N-BK7, f≈50mm)',
+      description:
+        'Biconvexe symétrique R1=R2=+51.7mm (convention TL), R2_std=−51.7mm, ' +
+        'N-BK7, t=6mm. f≈50mm. Grossissement 5× (M=D/f=250/50). Objet au foyer → image à l\'infini. Unités mm.',
+      units: { scale: 1, displayUnit: 'mm' },
+    },
+  }
+}
+
 export const PRESETS: Preset[] = [
   { id: 'prism',      label: 'Dispersion — Prisme',       make: prismDispersion },
   { id: 'diamond',    label: 'Dispersion — Diamant',      make: diamondDispersion },
@@ -476,4 +529,5 @@ export const PRESETS: Preset[] = [
   { id: 'cassegrain', label: 'Télescope de Cassegrain',    make: cassegrainTelescope },
   { id: 'achromat',   label: 'Doublet achromatique',       make: achromaticDoublet },
   { id: 'fraunhofer', label: 'Doublet de Fraunhofer f/4',  make: fraunhoferDoubletF4 },
+  { id: 'loupe-5x',   label: 'Loupe 5× (N-BK7, f≈50mm)', make: loupeFiveX },
 ]

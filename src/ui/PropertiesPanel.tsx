@@ -433,7 +433,7 @@ function ThinLensPanel({ el, onUpdate, u, scene }: { el: ThinLens; onUpdate: () 
   return <>
     <Slider label="Angle axe" value={el.angle * RAD} min={-180} max={180} step={0.1} unit="°"
       onChange={v => { el.angle = v * DEG; onUpdate() }} />
-    <Slider label="Focale f" value={u.toD(el.focalLength)} min={u.toD(-500)} max={u.toD(500)} step={u.step} unit={u.unit} digits={u.digits}
+    <Slider label="Focale f" value={u.toD(el.focalLength)} min={u.toD(-2000)} max={u.toD(2000)} step={u.step} unit={u.unit} digits={u.digits}
       onChange={v => { const px = u.toI(v); if (px === 0) return; el.focalLength = px; onUpdate() }} />
     <Slider label="Ouverture" value={u.toD(el.height)} min={u.toD(20)} max={u.toD(400)} step={u.step} unit={u.unit} digits={u.digits}
       onChange={v => { el.height = u.toI(v); onUpdate() }} />
@@ -497,12 +497,12 @@ function CoatingToggle({
 // ─────────────────────────────────────────────────────────────────────────────
 
 const OPTIMIZABLE_PROPS: Record<string, { label: string; min: number; max: number }[]> = {
-  'thin-lens':  [{ label: 'f (focale)', min: 20, max: 1000 }],
+  'thin-lens':  [{ label: 'f (focale)', min: -2000, max: 2000 }],
   'thick-lens': [
-    { label: 'R1',         min: 20, max: 1000 },
-    { label: 'R2',         min: 20, max: 1000 },
-    { label: 'thickness',  min: 2,  max: 200  },
-    { label: 'halfHeight', min: 10, max: 300  },
+    { label: 'R1',         min: -2000, max: 2000 },
+    { label: 'R2',         min: -2000, max: 2000 },
+    { label: 'thickness',  min: 2,     max: 200  },
+    { label: 'halfHeight', min: 10,    max: 300  },
   ],
   'curved-mirror': [{ label: 'radius', min: 20, max: 1000 }],
   'conic-mirror':  [{ label: 'R',      min: 20, max: 1000 }],
@@ -659,10 +659,10 @@ function ThickLensPanel({ el, onUpdate, u, scene }: { el: ThickLens; onUpdate: (
   return <>
     <Slider label="Angle axe" value={el.angle * RAD} min={-180} max={180} step={0.1} unit="°"
       onChange={v => { el.angle = v * DEG; onUpdate() }} />
-    <Slider label="R1 (avant)" value={u.toD(el.R1)} min={u.toD(20)} max={u.toD(800)} step={u.step} unit={u.unit} digits={u.digits}
-      onChange={v => { el.R1 = u.toI(v); onUpdate() }} />
-    <Slider label="R2 (arrière)" value={u.toD(el.R2)} min={u.toD(20)} max={u.toD(800)} step={u.step} unit={u.unit} digits={u.digits}
-      onChange={v => { el.R2 = u.toI(v); onUpdate() }} />
+    <Slider label="R1 (avant)" value={u.toD(el.R1)} min={u.toD(-2000)} max={u.toD(2000)} step={u.step} unit={u.unit} digits={u.digits}
+      onChange={v => { if (v === 0) return; el.R1 = u.toI(v); onUpdate() }} />
+    <Slider label="R2 (arrière)" value={u.toD(el.R2)} min={u.toD(-2000)} max={u.toD(2000)} step={u.step} unit={u.unit} digits={u.digits}
+      onChange={v => { if (v === 0) return; el.R2 = u.toI(v); onUpdate() }} />
     <Slider label="κ1" value={el.kappa1} min={-3} max={2} step={0.05} digits={2}
       onChange={v => { el.kappa1 = v; onUpdate() }} />
     <Slider label="κ2" value={el.kappa2} min={-3} max={2} step={0.05} digits={2}
