@@ -225,6 +225,7 @@ export function makeRmsMetric(imagePlaneId: string): MetricFn {
     if (primary.length === 0) return Infinity
 
     const spot = collectSpots(plane, primary)
+    if (spot.points.length < 3) return Infinity
     return spot.rmsRadius > 0 ? spot.rmsRadius : Infinity
   }
 }

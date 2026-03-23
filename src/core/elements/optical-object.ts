@@ -70,7 +70,7 @@ export class OpticalObject implements LightSource {
     this.angle          = p.angle          ?? 0
     this.mode           = p.mode
     this.height         = p.height
-    this.numRays        = p.numRays        ?? 5
+    this.numRays        = p.numRays        ?? 15
     this.spreadAngle    = p.spreadAngle    ?? Math.PI / 18   // 10°
     this.numFieldPoints = p.numFieldPoints ?? 1
     this.width          = p.width          ?? 200

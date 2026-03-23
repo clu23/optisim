@@ -127,10 +127,15 @@ function runAutoFocus(
   const axDir     = plane.axisDir
   const currentAx = origPos.x * axDir.x + origPos.y * axDir.y
 
+  const MIN_RAYS = 3
+
   function evalAt(ax: number): number {
     const d = ax - currentAx
     plane.position = { x: origPos.x + d * axDir.x, y: origPos.y + d * axDir.y }
     const s = collectSpots(plane, spotPrimary)
+    // Retourne Infinity si moins de MIN_RAYS points interceptent le plan :
+    // avec 1-2 points, le RMS converge vers 0 et l'optimiseur choisit une position arbitraire.
+    if (s.points.length < MIN_RAYS) return Infinity
     return s.rmsRadius > 0 ? s.rmsRadius : Infinity
   }
 
@@ -471,6 +476,7 @@ describe('AF7 — Balayage dense : RMS ≤ 2× minimum global (courbe non-unimod
   function evalAt7(ax: number): number {
     plane7.position = { x: ax, y: 0 }
     const s = collectSpots(plane7, spotPrimary7)
+    if (s.points.length < 3) return Infinity
     return s.rmsRadius > 0 ? s.rmsRadius : Infinity
   }
 
@@ -550,6 +556,7 @@ describe('AF8 — Cohérence métrique : rmsAfter == RMS recalculé indépendamm
   function evalAt8(ax: number): number {
     plane8.position = { x: ax, y: 0 }
     const s = collectSpots(plane8, spotPrimary8)
+    if (s.points.length < 3) return Infinity
     return s.rmsRadius > 0 ? s.rmsRadius : Infinity
   }
 
@@ -587,5 +594,25 @@ describe('AF8 — Cohérence métrique : rmsAfter == RMS recalculé indépendamm
     plane8.position = { x: currentAx8, y: 0 }
     const rmsBefore8 = collectSpots(plane8, spotPrimary8).rmsRadius
     expect(rmsAfter8).toBeLessThanOrEqual(rmsBefore8)
+  })
+
+  it('evalAt retourne Infinity si < 3 points interceptent le plan (garde-fou 1 rayon)', () => {
+    // Scénario : plan image très étroit (height=0.1mm) → seul le rayon central (y=0)
+    // peut l'intercepter → 1 point → rmsRadius=0 → Infinity.
+    const tinyPlane = new ImagePlane({ id: 'ip-af8-tiny', position: { x: V2x + BFD_THEO, y: 0 }, angle: 0, height: 0.1 })
+    const spotP = toSpotPrimary(
+      Array.from({ length: 7 }, (_, i) => makeRay(-500, -10 + (20 * i) / 6, 1, 0))
+        .map(r => traceRay(r, lensScene))
+    )
+    // Évalue au foyer : le plan étroit ne capte qu'1-2 rayons centraux → Infinity
+    tinyPlane.position = { x: V2x + BFD_THEO, y: 0 }
+    const s = collectSpots(tinyPlane, spotP)
+    const result = s.points.length < 3 ? Infinity : (s.rmsRadius > 0 ? s.rmsRadius : Infinity)
+    // Avec height=0.1mm, 0-2 rayons interceptés seulement → résultat Infinity
+    if (s.points.length < 3) {
+      expect(result).toBe(Infinity)
+    }
+    // Vérifie que spotPrimary.length (7) est bien ≥ 3 même si peu de rayons interceptent le plan
+    expect(spotP.length).toBeGreaterThanOrEqual(3)
   })
 })

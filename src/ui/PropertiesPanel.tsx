@@ -885,6 +885,10 @@ function ImagePlanePanel({
     nRays:     number               // nombre de rayons utilisés
     fallback:  boolean              // true = filtre insuffisant, fallback tous rayons
   } | null>(null)
+  const [focusError, setFocusError] = useState<string | null>(null)
+
+  /** Nombre minimum de rayons interceptés pour que l'auto-focus soit fiable. */
+  const MIN_AF_RAYS = 3
 
   // Axial position = projection de position sur l'axe optique
   const axialPx  = el.position.x * el.axisDir.x + el.position.y * el.axisDir.y
@@ -912,7 +916,18 @@ function ImagePlanePanel({
   // On réduit chaque résultat à son seul segment primaire (le dernier) avant
   // de passer à collectSpots.
   function handleAutoFocus() {
-    if (!spotPrimary.length) return
+    // Garde minimum : l'auto-focus requiert au moins MIN_AF_RAYS rayons ayant
+    // traversé au moins un élément optique. Avec 1-2 rayons, le RMS converge
+    // vers 0 (point unique ou paire) et l'optimiseur choisit une position
+    // arbitraire plutôt que le vrai foyer.
+    if (spotPrimary.length < MIN_AF_RAYS) {
+      setFocusError(
+        `Pas assez de rayons valides (${spotPrimary.length} sur ${MIN_AF_RAYS} minimum). ` +
+        `Augmentez le nombre de rayons ou l'ouverture de la source.`
+      )
+      return
+    }
+    setFocusError(null)
 
     const axDir     = el.axisDir
     const origPos   = { ...el.position }
@@ -929,10 +944,12 @@ function ImagePlanePanel({
     // La fonction de coût est IDENTIQUE à la métrique affichée dans le panel spot diagram
     // (spotPrimary = rayons ayant interagi ≥1 surface, dernier segment uniquement).
     // Cette cohérence garantit que le RMS affiché après auto-focus == RMS optimisé.
+    // Retourne Infinity si < MIN_AF_RAYS points interceptent le plan (RMS non représentatif).
     function evalAt(ax: number): number {
       const d = ax - currentAx
       el.position = { x: origPos.x + d * axDir.x, y: origPos.y + d * axDir.y }
       const s = collectSpots(el, spotPrimary)
+      if (s.points.length < MIN_AF_RAYS) return Infinity
       return s.rmsRadius > 0 ? s.rmsRadius : Infinity
     }
 
@@ -1327,9 +1344,20 @@ function ImagePlanePanel({
     <div className="prop-row">
       <div className="prop-header">
         <span className="prop-label">N rayons</span>
-        <span className="prop-value" style={{ color: '#8bb8f8' }}>{spotData.points.length}</span>
+        <span className="prop-value" style={{
+          color: spotData.points.length < MIN_AF_RAYS ? '#f06060' : '#8bb8f8',
+        }}>{spotData.points.length}</span>
       </div>
     </div>
+    {spotData.points.length > 0 && spotData.points.length < MIN_AF_RAYS && (
+      <div style={{
+        margin: '2px 8px 4px', padding: '3px 6px', borderRadius: 3,
+        background: 'rgba(240,80,80,0.12)', border: '1px solid rgba(240,80,80,0.4)',
+        color: '#f08080', fontSize: 10, lineHeight: 1.4,
+      }}>
+        ⚠ {spotData.points.length} rayon{spotData.points.length > 1 ? 's' : ''} intercepté{spotData.points.length > 1 ? 's' : ''} — RMS non représentatif (min. {MIN_AF_RAYS})
+      </div>
+    )}
 
     {/* Auto-focus */}
     <div className="props-section">Mise au point auto</div>
@@ -1345,6 +1373,15 @@ function ImagePlanePanel({
         ⊕ Auto-focus
       </button>
     </div>
+    {focusError && (
+      <div style={{
+        margin: '2px 8px 4px', padding: '4px 6px', borderRadius: 3,
+        background: 'rgba(240,80,80,0.12)', border: '1px solid rgba(240,80,80,0.4)',
+        color: '#f08080', fontSize: 10, lineHeight: 1.5,
+      }}>
+        ⚠ {focusError}
+      </div>
+    )}
     {focusResult && <>
       <div className="prop-row">
         <div className="prop-header">
