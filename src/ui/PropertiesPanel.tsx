@@ -893,20 +893,32 @@ function ImagePlanePanel({
 
   // ── Auto-focus : GSS sur la position axiale, rayons filtrés ───────────────
   //
-  // Rayons valides : ≥2 segments (a traversé au moins une surface réfractante)
-  // ET intensité du dernier segment > 0.5 (élimine les reflets Fresnel).
-  // Pas besoin de re-tracer : ImagePlane est transparent, on déplace le plan
-  // et on recalcule les intersections avec les segments déjà tracés.
+  // Filtre des rayons valides (3 critères) :
+  //   1) segments.length ≥ 2 : a traversé au moins une surface optique
+  //   2) dot(lastSegDir, axisOptique) > 0 : se propage vers le détecteur
+  //   3) intensité du dernier segment > 10% : rayon primaire, pas un reflet Fresnel
+  //
+  // Isolation des segments primaires : les sub-rayons Fresnel sont fusionnés dans
+  // le même TraceResult que le rayon principal. Certains de leurs segments vont
+  // dans le sens +axe et créent des points fantômes qui faussent le RMS.
+  // On réduit chaque résultat à son seul segment primaire (le dernier) avant
+  // de passer à collectSpots.
   function handleAutoFocus() {
     if (!results.length) return
 
-    // Filtre : rayons ayant traversé au moins une surface réfractante (≥2 segments)
-    // ET intensité principale > 10% (élimine les reflets Fresnel ~4%, garde les
-    // transmissions même avec plusieurs surfaces ou coating partiel).
-    const filtered = results.filter(r =>
-      r.segments.length >= 2 &&
-      r.segments[r.segments.length - 1].intensity > 0.1,
-    )
+    const axDir = el.axisDir  // direction de l'axe optique (constante pendant l'optimisation)
+
+    // 1. Filtre des rayons valides
+    const filtered = results.filter(r => {
+      if (r.segments.length < 2) return false
+      const last = r.segments[r.segments.length - 1]
+      const dx = last.end.x - last.start.x
+      const dy = last.end.y - last.start.y
+      const dotAxis = dx * axDir.x + dy * axDir.y
+      if (dotAxis <= 0) return false
+      if (last.intensity <= 0.1) return false
+      return true
+    })
 
     // Garde-fou : si moins de 3 rayons passent le filtre, on utilise tous les
     // rayons (sans filtre) pour ne pas travailler sur un échantillon trop petit.
@@ -914,21 +926,27 @@ function ImagePlanePanel({
     const valid    = fallback ? results : filtered
     if (!valid.length) return
 
+    // 2. Isolation du segment primaire : écarte les segments Fresnel fantômes
+    const primary = valid.map(r => ({
+      segments: [r.segments[r.segments.length - 1]],
+      totalOpticalPath: r.totalOpticalPath,
+    }))
+
     const origPos   = { ...el.position }
-    const axDir     = el.axisDir           // constant (dépend de el.angle)
     const currentAx = origPos.x * axDir.x + origPos.y * axDir.y
 
-    // Borne inférieure : x du début du dernier segment de chaque rayon valide.
-    // Ce point est juste après la dernière surface traversée → pas de sens
-    // physique de chercher un foyer avant cette position.
-    const lastOpticalX = Math.max(...valid.map(r => r.segments[r.segments.length - 1].start.x))
-    const lo = lastOpticalX + u.toI(1)   // 1mm de marge après la dernière surface
-    const hi = lo + u.toI(500)           // plage de +500mm vers la droite
+    // Borne inférieure : position axiale du début du dernier segment de chaque rayon.
+    const lastOpticalAx = Math.max(...primary.map(r => {
+      const s = r.segments[0]
+      return s.start.x * axDir.x + s.start.y * axDir.y
+    }))
+    const lo = lastOpticalAx + u.toI(1)   // 1mm de marge après la dernière surface
+    const hi = lo + u.toI(500)            // plage de +500mm vers la droite
 
     function evalAt(ax: number): number {
       const d = ax - currentAx
       el.position = { x: origPos.x + d * axDir.x, y: origPos.y + d * axDir.y }
-      const s = collectSpots(el, valid)
+      const s = collectSpots(el, primary)
       return s.rmsRadius > 0 ? s.rmsRadius : Infinity
     }
 
@@ -950,7 +968,7 @@ function ImagePlanePanel({
     // Applique la position optimale
     const dOpt = optAx - currentAx
     el.position = { x: origPos.x + dOpt * axDir.x, y: origPos.y + dOpt * axDir.y }
-    const rmsAfter = collectSpots(el, valid).rmsRadius * mmPerPx * 1000
+    const rmsAfter = collectSpots(el, primary).rmsRadius * mmPerPx * 1000
 
     setFocusResult({ rmsBefore, rmsAfter, origX: u.toD(currentAx), optX: u.toD(optAx), curve, nRays: valid.length, fallback })
     onUpdate()
