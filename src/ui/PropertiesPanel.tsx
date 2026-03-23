@@ -912,75 +912,58 @@ function ImagePlanePanel({
   // On réduit chaque résultat à son seul segment primaire (le dernier) avant
   // de passer à collectSpots.
   function handleAutoFocus() {
-    if (!results.length) return
+    if (!spotPrimary.length) return
 
-    const axDir = el.axisDir  // direction de l'axe optique (constante pendant l'optimisation)
-
-    // 1. Filtre des rayons valides
-    const filtered = results.filter(r => {
-      if (r.segments.length < 2) return false
-      const last = r.segments[r.segments.length - 1]
-      const dx = last.end.x - last.start.x
-      const dy = last.end.y - last.start.y
-      const dotAxis = dx * axDir.x + dy * axDir.y
-      if (dotAxis <= 0) return false
-      if (last.intensity <= 0.1) return false
-      return true
-    })
-
-    // Garde-fou : si moins de 3 rayons passent le filtre strict (direction + intensité),
-    // on relaxe les critères de direction et d'intensité, mais on conserve TOUJOURS
-    // l'exigence d'interaction optique (segments.length ≥ 2). Les rayons passant à côté
-    // de tout élément (une seule droite source → plan image) sont toujours exclus.
-    const fallback = filtered.length < 3
-    const valid    = fallback ? results.filter(r => r.segments.length >= 2) : filtered
-    if (!valid.length) return
-
-    // 2. Isolation du segment primaire : écarte les segments Fresnel fantômes
-    const primary = valid.map(r => ({
-      segments: [r.segments[r.segments.length - 1]],
-      totalOpticalPath: r.totalOpticalPath,
-    }))
-
+    const axDir     = el.axisDir
     const origPos   = { ...el.position }
     const currentAx = origPos.x * axDir.x + origPos.y * axDir.y
 
     // Borne inférieure : position axiale du début du dernier segment de chaque rayon.
-    const lastOpticalAx = Math.max(...primary.map(r => {
+    const lastOpticalAx = Math.max(...spotPrimary.map(r => {
       const s = r.segments[0]
       return s.start.x * axDir.x + s.start.y * axDir.y
     }))
     const lo = lastOpticalAx + u.toI(1)   // 1mm de marge après la dernière surface
     const hi = lo + u.toI(500)            // plage de +500mm vers la droite
 
+    // La fonction de coût est IDENTIQUE à la métrique affichée dans le panel spot diagram
+    // (spotPrimary = rayons ayant interagi ≥1 surface, dernier segment uniquement).
+    // Cette cohérence garantit que le RMS affiché après auto-focus == RMS optimisé.
     function evalAt(ax: number): number {
       const d = ax - currentAx
       el.position = { x: origPos.x + d * axDir.x, y: origPos.y + d * axDir.y }
-      const s = collectSpots(el, primary)
+      const s = collectSpots(el, spotPrimary)
       return s.rmsRadius > 0 ? s.rmsRadius : Infinity
     }
 
-    // RMS à la position actuelle (peut être hors plage, sert uniquement à l'affichage)
+    // RMS à la position actuelle
     const rmsBefore = evalAt(currentAx) * mmPerPx * 1000
 
-    // Balayage 61 points sur [lo, hi] → courbe de focus
-    const N = 60
+    // ── 1. Balayage dense 200 points → courbe complète + minimum global ──────
+    // Un balayage dense évite les pièges des minimums locaux (courbe non-unimodale).
+    const N_SCAN = 200
     const curve: { x: number; rms: number }[] = []
-    for (let i = 0; i <= N; i++) {
-      const ax = lo + (hi - lo) * i / N
+    let bestAx = lo, bestRms = Infinity
+    for (let i = 0; i <= N_SCAN; i++) {
+      const ax = lo + (hi - lo) * i / N_SCAN
       const r  = evalAt(ax)
       curve.push({ x: u.toD(ax), rms: r === Infinity ? 0 : r * mmPerPx * 1000 })
+      if (r < bestRms) { bestRms = r; bestAx = ax }
     }
 
-    // Recherche par section dorée sur [lo, hi]
-    const { x: optAx } = goldenSectionSearch(evalAt, lo, hi, 0.1, 80)
+    // ── 2. Affinage par section dorée dans ±10mm autour du minimum global ────
+    const margin = u.toI(10)
+    const refLo  = Math.max(lo, bestAx - margin)
+    const refHi  = Math.min(hi, bestAx + margin)
+    const { x: optAx } = goldenSectionSearch(evalAt, refLo, refHi, 0.1, 80)
 
     // Applique la position optimale
     const dOpt = optAx - currentAx
     el.position = { x: origPos.x + dOpt * axDir.x, y: origPos.y + dOpt * axDir.y }
-    const rmsAfter = collectSpots(el, primary).rmsRadius * mmPerPx * 1000
+    // rmsAfter utilise spotPrimary → même valeur que le panel spot diagram recalcule
+    const rmsAfter = collectSpots(el, spotPrimary).rmsRadius * mmPerPx * 1000
 
-    setFocusResult({ rmsBefore, rmsAfter, origX: u.toD(currentAx), optX: u.toD(optAx), curve, nRays: valid.length, fallback })
+    setFocusResult({ rmsBefore, rmsAfter, origX: u.toD(currentAx), optX: u.toD(optAx), curve, nRays: spotPrimary.length, fallback: false })
     onUpdate()
   }
 
