@@ -13,7 +13,7 @@
 //             Proc. Amer. Math. Soc. 4(3), 502-506.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { Scene } from './types.ts'
+import type { Scene, TraceResult } from './types.ts'
 import { traceRay } from './tracer.ts'
 import { collectSpots } from './spot-diagram.ts'
 import { ImagePlane } from './elements/image-plane.ts'
@@ -197,6 +197,12 @@ export function optimizeScene(
  * La métrique trace tous les rayons de la scène et mesure le rayon RMS
  * du spot sur le plan image `imagePlaneId`.
  *
+ * Seuls les rayons ayant interagi avec au moins un élément optique sont pris
+ * en compte (segments.length ≥ 2). Les rayons passant à côté de tout élément
+ * (une seule droite source → plan image) sont exclus car ils faussent le RMS.
+ * Par ailleurs, seul le segment primaire (le dernier, rayon transmis principal)
+ * est utilisé pour éviter les points fantômes des sub-rayons Fresnel.
+ *
  * @param imagePlaneId  identifiant du plan image (ImagePlane element)
  * @returns             fonction métrique (scene → rmsRadius en px)
  */
@@ -205,11 +211,20 @@ export function makeRmsMetric(imagePlaneId: string): MetricFn {
     const plane = scene.elements.find(e => e.id === imagePlaneId)
     if (!(plane instanceof ImagePlane)) return Infinity
 
-    const results = scene.sources.flatMap(src =>
+    const allResults = scene.sources.flatMap(src =>
       src.generateRays().map(ray => traceRay(ray, scene))
     )
 
-    const spot = collectSpots(plane, results)
-    return spot.rmsRadius
+    // Filtrage : exclure les rayons sans interaction optique (passent à côté de
+    // tout élément). Puis conserver uniquement le segment primaire pour éviter
+    // les points fantômes issus des sub-rayons Fresnel fusionnés.
+    const primary: TraceResult[] = allResults
+      .filter(r => r.segments.length >= 2)
+      .map(r => ({ segments: [r.segments[r.segments.length - 1]], totalOpticalPath: r.totalOpticalPath }))
+
+    if (primary.length === 0) return Infinity
+
+    const spot = collectSpots(plane, primary)
+    return spot.rmsRadius > 0 ? spot.rmsRadius : Infinity
   }
 }

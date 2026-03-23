@@ -862,7 +862,15 @@ function ImagePlanePanel({
   results: TraceResult[]
   scene: import('../core/types.ts').Scene | null
 }) {
-  const spotData = collectSpots(el, results)
+  // Filtrage des rayons valides pour le spot diagram :
+  //   • segments.length ≥ 2 : a interagi avec au moins un élément optique
+  //     (un rayon passant à côté de tout élément n'a qu'un seul segment libre).
+  //   • segment primaire uniquement (dernier segment) : exclut les points fantômes
+  //     des sub-rayons Fresnel fusionnés dans le même TraceResult.
+  const spotPrimary = results
+    .filter(r => r.segments.length >= 2)
+    .map(r => ({ segments: [r.segments[r.segments.length - 1]], totalOpticalPath: r.totalOpticalPath }))
+  const spotData = collectSpots(el, spotPrimary)
   const spotRef       = useRef<HTMLCanvasElement>(null)
   const fanRef        = useRef<HTMLCanvasElement>(null)
   const lcaRef        = useRef<HTMLCanvasElement>(null)
@@ -920,10 +928,12 @@ function ImagePlanePanel({
       return true
     })
 
-    // Garde-fou : si moins de 3 rayons passent le filtre, on utilise tous les
-    // rayons (sans filtre) pour ne pas travailler sur un échantillon trop petit.
+    // Garde-fou : si moins de 3 rayons passent le filtre strict (direction + intensité),
+    // on relaxe les critères de direction et d'intensité, mais on conserve TOUJOURS
+    // l'exigence d'interaction optique (segments.length ≥ 2). Les rayons passant à côté
+    // de tout élément (une seule droite source → plan image) sont toujours exclus.
     const fallback = filtered.length < 3
-    const valid    = fallback ? results : filtered
+    const valid    = fallback ? results.filter(r => r.segments.length >= 2) : filtered
     if (!valid.length) return
 
     // 2. Isolation du segment primaire : écarte les segments Fresnel fantômes

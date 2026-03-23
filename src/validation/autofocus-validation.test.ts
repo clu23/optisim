@@ -9,6 +9,8 @@
  * AF3 — Objet ponctuel à 200mm avant V1 : auto-focus à ±2mm de l'image conjuguée
  * AF4 — Miroir parabolique (κ=−1) + faisceau parallèle : auto-focus à ±1mm du foyer exact
  * AF5 — Au moins 5 rayons valides sur 7 rayons pour le faisceau standard
+ * AF6 — Faisceau large (40mm, 9 rayons) dont les extrêmes passent à côté de la lentille :
+ *        les rayons hors ouverture ne doivent PAS être comptés dans le spot diagram.
  */
 
 import { describe, it, expect } from 'vitest'
@@ -16,9 +18,10 @@ import { ThickLens }    from '../core/elements/thick-lens.ts'
 import { ConicMirror }  from '../core/elements/conic-mirror.ts'
 import { ImagePlane }   from '../core/elements/image-plane.ts'
 import { collectSpots } from '../core/spot-diagram.ts'
-import { goldenSectionSearch } from '../core/optimizer.ts'
+import { goldenSectionSearch, makeRmsMetric } from '../core/optimizer.ts'
 import { traceRay }     from '../core/tracer.ts'
 import { normalize }    from '../core/vector.ts'
+import { BeamSource }   from '../core/sources/beam.ts'
 import type { Ray, Scene, TraceResult, Vec2 } from '../core/types.ts'
 
 // ─── Setup — Lentille épaisse N-BK7 biconvexe ────────────────────────────────
@@ -314,5 +317,88 @@ describe('AF5 — Au moins 5 rayons valides sur 7 (faisceau standard)', () => {
       const dx = last.end.x - last.start.x
       expect(dx).toBeGreaterThan(0)
     }
+  })
+})
+
+// ─── AF6 : rayons hors ouverture exclus du spot diagram ──────────────────────
+
+describe('AF6 — Rayons hors ouverture exclus du spot diagram et de l\'auto-focus', () => {
+  /**
+   * 9 rayons parallèles à 555nm, largeur 40mm (−20 à +20mm, pas 5mm).
+   * Lens halfHeight = 12.5mm → rayons à h=±15mm et h=±20mm passent à côté (4 rayons).
+   * Rayons à h=0, ±5, ±10mm traversent la lentille (5 rayons valides).
+   *
+   * Ce test vérifie que makeRmsMetric (et plus généralement tout calcul de spot)
+   * exclut les rayons sans interaction optique (segments.length = 1).
+   *
+   * Ce test ÉCHOUE si makeRmsMetric n'applique pas le filtre segments.length ≥ 2 :
+   * les rayons manqués (droites constantes en y) dominent le RMS et le rendent
+   * uniformément élevé sur toute la plage de recherche → l'auto-focus trouve
+   * une position arbitraire, pas la BFD.
+   */
+  const BEAM_WIDTH = 40   // mm — largeur totale du faisceau
+  const N_RAYS     = 9    // rayons de h=−20 à h=+20 par pas de 5mm
+
+  // Scène : lentille + plan image à la BFD théorique + source large
+  const focusX = V2x + BFD_THEO
+  const imagePlane = new ImagePlane({
+    id: 'ip-af6', position: { x: focusX, y: 0 }, angle: 0, height: 100,
+  })
+  const beam = new BeamSource({
+    id: 'beam-af6',
+    position: { x: -500, y: 0 },
+    angle:    0,
+    wavelengths: [WAVELENGTH],
+    numRays: N_RAYS,
+    width:   BEAM_WIDTH,
+  })
+  const sceneAF6: Scene = {
+    elements: [lens, imagePlane],
+    sources:  [beam],
+    metadata: { name: 'af6' },
+  }
+
+  // Traces manuelles pour les assertions sur le comptage
+  const allRays    = beam.generateRays()
+  const allResults = allRays.map(r => traceRay(r, lensScene))
+  const validRays  = filterValidRays(allResults)
+  const primary    = toPrimaryOnly(validRays)
+
+  it('certains rayons passent à côté (segments.length = 1)', () => {
+    const missed = allResults.filter(r => r.segments.length < 2)
+    expect(missed.length).toBeGreaterThan(0)
+  })
+
+  it('le nombre de rayons valides est inférieur au total (9)', () => {
+    expect(validRays.length).toBeLessThan(N_RAYS)
+  })
+
+  it('le RMS avec filtrage est significativement plus petit qu\'sans filtrage au foyer', () => {
+    // Sans filtrage : les rayons manqués contribuent des spots à y=±15, ±20mm
+    const rmsUnfiltered = collectSpots(imagePlane, toPrimaryOnly(allResults)).rmsRadius
+
+    // Avec filtrage : seuls les 5 rayons traversant la lentille, convergents près de y=0
+    const rmsFiltered = collectSpots(imagePlane, primary).rmsRadius
+
+    // Le RMS sans filtrage doit être significativement plus élevé (> 2× le filtré)
+    expect(rmsFiltered).toBeGreaterThan(0)
+    expect(rmsUnfiltered).toBeGreaterThan(rmsFiltered * 2)
+  })
+
+  it('makeRmsMetric exclut les rayons sans interaction — RMS au foyer < 2mm', () => {
+    // Ce test ÉCHOUE si makeRmsMetric n'applique pas le filtre segments.length ≥ 2.
+    // Sans filtre : rms ≈ 10mm (dominé par les 4 rayons manqués constants à y=±15, ±20mm).
+    // Avec filtre : rms ≈ 0.3mm (5 rayons valides convergent près du foyer).
+    const metric = makeRmsMetric('ip-af6')
+    const rmsAtFocus = metric(sceneAF6)
+    expect(rmsAtFocus).toBeLessThan(2)
+  })
+
+  it('auto-focus avec filtrage à ±5mm de la BFD théorique', () => {
+    const plane = new ImagePlane({ id: 'ip-af6b', position: { x: 300, y: 0 }, angle: 0, height: 100 })
+    const [lo, hi] = searchBounds(validRays)
+    const { optAx } = runAutoFocus(plane, validRays, lo, hi)
+    const bfdFound = optAx - V2x
+    expect(Math.abs(bfdFound - BFD_THEO)).toBeLessThan(5)
   })
 })
