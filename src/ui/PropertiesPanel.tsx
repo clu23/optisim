@@ -929,7 +929,28 @@ function ImagePlanePanel({
     }
     setFocusError(null)
 
-    const axDir     = el.axisDir
+    const axDir = el.axisDir
+
+    // ── Pré-alignement : si aucun rayon n'intercepte le plan, centrer sur le faisceau ──
+    // Cas typique : plan image décalé latéralement par rapport à l'axe du faisceau.
+    // On ouvre temporairement la demi-hauteur à l'infini pour récupérer TOUS les
+    // points d'intersection, puis on repositionne et redimensionne le détecteur.
+    if (collectSpots(el, spotPrimary).points.length === 0) {
+      const savedH = el.height
+      el.height = 1e9  // capture tous les rayons sans contrainte de hauteur
+      const wide = collectSpots(el, spotPrimary)
+      el.height = savedH
+      if (wide.points.length >= MIN_AF_RAYS) {
+        // Déplace le centre du plan vers le centroïde du faisceau (coordonnées locales)
+        el.position = {
+          x: el.position.x + wide.centroid * el.planeDir.x,
+          y: el.position.y + wide.centroid * el.planeDir.y,
+        }
+        // Demi-hauteur = rayon max + 20% de marge (au minimum 5mm)
+        el.height = Math.max(wide.maxRadius * 1.2, u.toI(5))
+      }
+    }
+
     const origPos   = { ...el.position }
     const currentAx = origPos.x * axDir.x + origPos.y * axDir.y
 
